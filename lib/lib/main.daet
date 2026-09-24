@@ -9,9 +9,13 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: AiMuhandis(),
+      theme: ThemeData(
+        colorSchemeSeed: Colors.blue,
+        useMaterial3: true,
+      ),
+      home: const AiMuhandis(),
     );
   }
 }
@@ -24,92 +28,208 @@ class AiMuhandis extends StatefulWidget {
 }
 
 class _AiMuhandisState extends State<AiMuhandis> {
-  final oldPressure = TextEditingController();
-  final newPressure = TextEditingController();
+  // KIRISH BOSIMI
+  final oldInPressure = TextEditingController();
+  final newInPressure = TextEditingController();
 
+  // CHIQISH BOSIMI
   final oldOutPressure = TextEditingController();
   final newOutPressure = TextEditingController();
 
+  // GAZ SARFI
   final oldGasFlow = TextEditingController();
   final newGasFlow = TextEditingController();
 
+  // HARORAT
+  final oldTemp = TextEditingController();
+  final newTemp = TextEditingController();
+
+  // VIBRATSIYA
+  final oldVibration = TextEditingController();
+  final newVibration = TextEditingController();
+
+  // RPM
+  final oldRpm = TextEditingController();
+  final newRpm = TextEditingController();
+
   String natija = 'Hali diagnostika qilinmadi';
 
-  double? raqam(TextEditingController c) {
-    return double.tryParse(c.text.replaceAll(',', '.'));
+  double? qiymat(TextEditingController c) {
+    return double.tryParse(c.text.trim().replaceAll(',', '.'));
   }
 
-  String holat(double farq) {
-    if (farq > 0) return 'OSHGАN ↑';
-    if (farq < 0) return 'KAMAYGAN ↓';
-    return 'O‘ZGARMAGAN';
+  String tahlil(
+    String nom,
+    double oldValue,
+    double newValue,
+    String birlik,
+  ) {
+    final farq = newValue - oldValue;
+
+    double foiz = 0;
+    if (oldValue != 0) {
+      foiz = (farq / oldValue) * 100;
+    }
+
+    String holat;
+
+    if (farq > 0) {
+      holat = 'OSHDI ↑';
+    } else if (farq < 0) {
+      holat = 'KAMAYDI ↓';
+    } else {
+      holat = 'O‘ZGARMADI';
+    }
+
+    return '''
+$nom
+Oldingi: ${oldValue.toStringAsFixed(2)} $birlik
+Hozirgi: ${newValue.toStringAsFixed(2)} $birlik
+Farq: ${farq.toStringAsFixed(2)} $birlik
+O‘zgarish: ${foiz.toStringAsFixed(1)} %
+Holat: $holat
+''';
   }
 
   void diagnostika() {
-    final kOld = raqam(oldPressure);
-    final kNew = raqam(newPressure);
-    final chOld = raqam(oldOutPressure);
-    final chNew = raqam(newOutPressure);
-    final gOld = raqam(oldGasFlow);
-    final gNew = raqam(newGasFlow);
+    final inOld = qiymat(oldInPressure);
+    final inNew = qiymat(newInPressure);
 
-    if (kOld == null ||
-        kNew == null ||
-        chOld == null ||
-        chNew == null ||
-        gOld == null ||
-        gNew == null) {
+    final outOld = qiymat(oldOutPressure);
+    final outNew = qiymat(newOutPressure);
+
+    final gasOld = qiymat(oldGasFlow);
+    final gasNew = qiymat(newGasFlow);
+
+    final tempOld = qiymat(oldTemp);
+    final tempNew = qiymat(newTemp);
+
+    final vibOld = qiymat(oldVibration);
+    final vibNew = qiymat(newVibration);
+
+    final rpmOld = qiymat(oldRpm);
+    final rpmNew = qiymat(newRpm);
+
+    if (inOld == null ||
+        inNew == null ||
+        outOld == null ||
+        outNew == null ||
+        gasOld == null ||
+        gasNew == null ||
+        tempOld == null ||
+        tempNew == null ||
+        vibOld == null ||
+        vibNew == null ||
+        rpmOld == null ||
+        rpmNew == null) {
       setState(() {
-        natija = 'Barcha qiymatlarni to‘g‘ri kiriting.';
+        natija = 'Barcha qiymatlarni to‘liq kiriting.';
       });
       return;
     }
 
-    final kFarq = kNew - kOld;
-    final chFarq = chNew - chOld;
-    final gFarq = gNew - gOld;
-
-    final kFoiz = kOld != 0 ? kFarq / kOld * 100 : 0.0;
-    final chFoiz = chOld != 0 ? chFarq / chOld * 100 : 0.0;
-    final gFoiz = gOld != 0 ? gFarq / gOld * 100 : 0.0;
-
     setState(() {
       natija =
-          'KIRISH BOSIMI\n'
-          'Oldingi: ${kOld.toStringAsFixed(2)} bar\n'
-          'Hozirgi: ${kNew.toStringAsFixed(2)} bar\n'
-          'O‘zgarish: ${kFoiz.toStringAsFixed(1)}%\n'
-          'Holat: ${holat(kFarq)}\n\n'
-          'CHIQISH BOSIMI\n'
-          'Oldingi: ${chOld.toStringAsFixed(2)} bar\n'
-          'Hozirgi: ${chNew.toStringAsFixed(2)} bar\n'
-          'O‘zgarish: ${chFoiz.toStringAsFixed(1)}%\n'
-          'Holat: ${holat(chFarq)}\n\n'
-          'GAZ SARFI\n'
-          'Oldingi: ${gOld.toStringAsFixed(0)} Nm³/h\n'
-          'Hozirgi: ${gNew.toStringAsFixed(0)} Nm³/h\n'
-          'O‘zgarish: ${gFoiz.toStringAsFixed(1)}%\n'
-          'Holat: ${holat(gFarq)}';
+          '${tahlil("KIRISH BOSIMI", inOld, inNew, "bar")}\n'
+          '${tahlil("CHIQISH BOSIMI", outOld, outNew, "bar")}\n'
+          '${tahlil("GAZ SARFI", gasOld, gasNew, "Nm³/h")}\n'
+          '${tahlil("HARORAT", tempOld, tempNew, "°C")}\n'
+          '${tahlil("VIBRATSIYA", vibOld, vibNew, "mm/s")}\n'
+          '${tahlil("AYLANISH TEZLIGI", rpmOld, rpmNew, "RPM")}';
     });
   }
 
-  Widget maydon(
+  void saqlash() {
+    final inValue = qiymat(newInPressure);
+    final outValue = qiymat(newOutPressure);
+    final gasValue = qiymat(newGasFlow);
+    final tempValue = qiymat(newTemp);
+    final vibValue = qiymat(newVibration);
+    final rpmValue = qiymat(newRpm);
+
+    if (inValue == null ||
+        outValue == null ||
+        gasValue == null ||
+        tempValue == null ||
+        vibValue == null ||
+        rpmValue == null) {
+      setState(() {
+        natija = 'Hozirgi sutka qiymatlarini to‘liq kiriting.';
+      });
+      return;
+    }
+setState(() {
+      oldInPressure.text = inValue.toString();
+      oldOutPressure.text = outValue.toString();
+      oldGasFlow.text = gasValue.toString();
+      oldTemp.text = tempValue.toString();
+      oldVibration.text = vibValue.toString();
+      oldRpm.text = rpmValue.toString();
+
+      newInPressure.clear();
+      newOutPressure.clear();
+      newGasFlow.clear();
+      newTemp.clear();
+      newVibration.clear();
+      newRpm.clear();
+
+      natija =
+          'QIYMATLAR SAQLANDI ✓\n\n'
+          'Saqlangan qiymatlar keyingi sutka uchun '
+          'oldingi qiymat sifatida o‘tkazildi.';
+    });
+  }
+
+  Widget input(
     TextEditingController controller,
-    String nom,
+    String label,
     String birlik,
   ) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
         controller: controller,
-        keyboardType:
-            const TextInputType.numberWithOptions(decimal: true),
+        keyboardType: const TextInputType.numberWithOptions(
+          decimal: true,
+        ),
         decoration: InputDecoration(
-          labelText: nom,
+          labelText: label,
           suffixText: birlik,
           border: const OutlineInputBorder(),
         ),
       ),
+    );
+  }
+
+  Widget parametr(
+    String nom,
+    String birlik,
+    TextEditingController oldController,
+    TextEditingController newController,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        Text(
+          nom,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 10),
+        input(
+          oldController,
+          'Oldingi sutka',
+          birlik,
+        ),
+        input(
+          newController,
+          'Hozirgi sutka',
+          birlik,
+        ),
+      ],
     );
   }
 
@@ -120,73 +240,109 @@ class _AiMuhandisState extends State<AiMuhandis> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('AI MUHANDIS'),
+        centerTitle: false,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(18),
         children: [
           const Text(
             'Sutkalik diagnostika',
             style: TextStyle(
-              fontSize: 25,
+              fontSize: 28,
               fontWeight: FontWeight.bold,
             ),
           ),
+
           const SizedBox(height: 8),
-          Text('Sana: ${now.day}.${now.month}.${now.year}'),
+
+          Text(
+            'Sana: ${now.day}.${now.month}.${now.year}',
+            style: const TextStyle(fontSize: 16),
+          ),
+
+          parametr(
+            'Kirish bosimi',
+            'bar',
+            oldInPressure,
+            newInPressure,
+          ),
+
+          parametr(
+            'Chiqish bosimi',
+            'bar',
+            oldOutPressure,
+            newOutPressure,
+          ),
+
+          parametr(
+            'Gaz sarfi',
+            'Nm³/h',
+            oldGasFlow,
+            newGasFlow,
+          ),
+
+          parametr(
+            'Harorat',
+            '°C',
+            oldTemp,
+            newTemp,
+          ),
+
+          parametr(
+            'Vibratsiya',
+            'mm/s',
+            oldVibration,
+            newVibration,
+          ),
+
+          parametr(
+            'Aylanish tezligi',
+            'RPM',
+            oldRpm,
+            newRpm,
+          ),
+
           const SizedBox(height: 25),
 
-          const Text(
-            'Kirish bosimi',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
+          SizedBox(
+            height: 55,
+            child: FilledButton.icon(
+              onPressed: diagnostika,
+              icon: const Icon(Icons.analytics),
+              label: const Text(
+                'DIAGNOSTIKA QILISH',
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          maydon(oldPressure, 'Oldingi sutka', 'bar'),
-          maydon(newPressure, 'Hozirgi sutka', 'bar'),
-          const SizedBox(height: 12),
-          const Text(
-            'Chiqish bosimi',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 10),
-          maydon(oldOutPressure, 'Oldingi sutka', 'bar'),
-          maydon(newOutPressure, 'Hozirgi sutka', 'bar'),
 
           const SizedBox(height: 12),
-          const Text(
-            'Gaz sarfi',
-            style: TextStyle(
-              fontSize: 19,
-              fontWeight: FontWeight.bold,
+
+          SizedBox(
+            height: 55,
+            child: OutlinedButton.icon(
+              onPressed: saqlash,
+              icon: const Icon(Icons.save),
+              label: const Text(
+                'QIYMATLARNI SAQLASH',
+              ),
             ),
           ),
-          const SizedBox(height: 10),
-          maydon(oldGasFlow, 'Oldingi sutka', 'Nm³/h'),
-          maydon(newGasFlow, 'Hozirgi sutka', 'Nm³/h'),
 
-          const SizedBox(height: 15),
-
-          FilledButton(
-            onPressed: diagnostika,
-            child: const Text('DIAGNOSTIKA QILISH'),
-          ),
-
-          const SizedBox(height: 20),
-
-          Card(
+          const SizedBox(height: 25),
+Card(
             child: Padding(
               padding: const EdgeInsets.all(18),
               child: Text(
                 natija,
-                style: const TextStyle(fontSize: 16),
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.4,
+                ),
               ),
             ),
           ),
+
+          const SizedBox(height: 40),
         ],
       ),
     );

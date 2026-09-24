@@ -21,7 +21,7 @@ jobs:
 
       - name: Create Flutter project
         run: |
-          cp main.dart /tmp/main.dart
+          cp lib/main.dart /tmp/main.dart
           flutter create --platforms=android --project-name ai_muhandis .
           cp /tmp/main.dart lib/main.dart
 
@@ -34,5 +34,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AI_Muhandis-APK
+          name: AI-Muhandis-APK
           path: build/app/outputs/flutter-apk/app-release.apk

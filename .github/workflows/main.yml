@@ -22,7 +22,7 @@ jobs:
       - name: Create Flutter project
         run: |
           cp main.dart /tmp/main.dart
-          flutter create --platforms=android .
+          flutter create --platforms=android --project-name ai_muhandis .
           cp /tmp/main.dart lib/main.dart
 
       - name: Get packages

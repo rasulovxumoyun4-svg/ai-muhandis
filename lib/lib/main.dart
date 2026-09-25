@@ -921,9 +921,8 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
       });
 
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        withData: true,
+        type: FileType.any,
+withData: true,
       );
 
       if (result == null || result.files.isEmpty) {

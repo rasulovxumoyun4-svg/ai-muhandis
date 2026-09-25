@@ -21,10 +21,14 @@ class AiMuhandisApp extends StatelessWidget {
   }
 }
 
+// =====================================================
+// BOSH SAHIFA
+// =====================================================
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-  void openPage(
+  void openSimplePage(
     BuildContext context,
     String title,
     String text,
@@ -32,7 +36,7 @@ class HomePage extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => SimplePage(
+        builder: (_) => SimplePage(
           title: title,
           text: text,
         ),
@@ -45,7 +49,7 @@ class HomePage extends StatelessWidget {
     IconData icon,
     String title,
     String subtitle,
-    String text,
+    VoidCallback onTap,
   ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -59,18 +63,7 @@ class HomePage extends StatelessWidget {
         ),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () {
-          if (title == 'AI Diagnostika') {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const DiagnosticPage(),
-              ),
-            );
-          } else {
-            openPage(context, title, text);
-          }
-        },
+        onTap: onTap,
       ),
     );
   }
@@ -102,7 +95,14 @@ class HomePage extends StatelessWidget {
             Icons.psychology,
             'AI Diagnostika',
             'Nosozlikni aniqlash va tahlil qilish',
-            '',
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const DiagnosticPage(),
+                ),
+              );
+            },
           ),
 
           menu(
@@ -110,8 +110,12 @@ class HomePage extends StatelessWidget {
             Icons.warning_amber,
             'Signal va Alarm',
             'Alarm va Trip tahlili',
-            'Alarm, Trip va himoya signallari vaqt bo‘yicha '
-                'tahlil qilinadi.',
+            () => openSimplePage(
+              context,
+              'Signal va Alarm',
+              'Alarm, Trip va himoya signallari vaqt bo‘yicha '
+                  'tahlil qilinadi.',
+            ),
           ),
 
           menu(
@@ -119,8 +123,12 @@ class HomePage extends StatelessWidget {
             Icons.show_chart,
             'SCADA / Trend',
             'SCADA va trend tahlili',
-            'SCADA ekranlari va trend ma’lumotlarini '
-                'tahlil qilish bo‘limi.',
+            () => openSimplePage(
+              context,
+              'SCADA / Trend',
+              'SCADA ekranlari, real parametrlar va trend '
+                  'maʼlumotlarini tahlil qilish bo‘limi.',
+            ),
           ),
 
           menu(
@@ -128,26 +136,37 @@ class HomePage extends StatelessWidget {
             Icons.description,
             'Texnik hujjatlar',
             'Pasport, sxema va reglament',
-            'Uskuna pasportlari, P&ID, elektr va KIPiA '
-                'sxemalari hamda reglamentlar shu yerda saqlanadi.',
+            () => openSimplePage(
+              context,
+              'Texnik hujjatlar',
+              'Uskuna pasportlari, P&ID, elektr, KIPiA va '
+                  'avtomatika sxemalari hamda reglamentlar.',
+            ),
           ),
 
           menu(
             context,
             Icons.cable,
             'Signal zanjiri',
-            'Datchikdan PLC gacha',
-            'Datchik → JB → kabel → terminal → '
-                'marshalling → PLC → SCADA zanjiri tahlil qilinadi.',
+            'Datchikdan PLC va SCADA gacha',
+            () => openSimplePage(
+              context,
+              'Signal zanjiri',
+              'Datchik → JB → kabel → terminal → marshalling → '
+                  'PLC → SCADA signal zanjiri.',
+            ),
           ),
-
           menu(
             context,
             Icons.history,
             'Nosozliklar tarixi',
-            'Oldingi nosozlik va ta’mirlar',
-            'Oldingi nosozliklar, sabablar va bajarilgan '
-                'ta’mirlash ishlari bazasi.',
+            'Oldingi nosozlik va bajarilgan ishlar',
+            () => openSimplePage(
+              context,
+              'Nosozliklar tarixi',
+              'Oldingi nosozliklar, haqiqiy sabablar, bajarilgan '
+                  'ishlar va muhandislar maʼlumotlari shu yerda saqlanadi.',
+            ),
           ),
 
           menu(
@@ -155,114 +174,350 @@ class HomePage extends StatelessWidget {
             Icons.monitor_heart,
             'Sutkalik monitoring',
             'Asosiy parametrlarni nazorat qilish',
-            'Bosim, gaz sarfi, harorat, vibratsiya va '
-                'RPM sutkalik nazorat qilinadi.',
-          ),
-          input(
-            'TAG raqami',
-            tagController,
-          ),
-
-          input(
-            'Signal / Alarm / Trip',
-            alarmController,
+            () => openSimplePage(
+              context,
+              'Sutkalik monitoring',
+              'Bosim, gaz sarfi, harorat, vibratsiya va RPM '
+                  'bo‘yicha monitoring.',
+            ),
           ),
 
-          const SizedBox(height: 10),
+          menu(
+            context,
+            Icons.chat,
+            'AI ga savol',
+            'Texnik savol berish',
+            () => openSimplePage(
+              context,
+              'AI ga savol',
+              'Texnik savollarni AI muhandisga yuborish bo‘limi.',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =====================================================
+// AI DIAGNOSTIKA
+// =====================================================
+
+class DiagnosticPage extends StatefulWidget {
+  const DiagnosticPage({super.key});
+
+  @override
+  State<DiagnosticPage> createState() => _DiagnosticPageState();
+}
+
+class _DiagnosticPageState extends State<DiagnosticPage> {
+  final equipment = TextEditingController();
+  final tag = TextEditingController();
+  final alarm = TextEditingController();
+
+  final inletPressure = TextEditingController();
+  final outletPressure = TextEditingController();
+  final gasFlow = TextEditingController();
+  final temperature = TextEditingController();
+  final vibration = TextEditingController();
+  final rpm = TextEditingController();
+
+  final problem = TextEditingController();
+
+  String analysisResult = '';
+
+  Widget field(
+    String label,
+    TextEditingController controller, {
+    bool number = false,
+    int maxLines = 1,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType:
+            number ? TextInputType.number : TextInputType.text,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+
+  void analyze() {
+    if (equipment.text.trim().isEmpty &&
+        tag.text.trim().isEmpty &&
+        alarm.text.trim().isEmpty &&
+        problem.text.trim().isEmpty) {
+      setState(() {
+        analysisResult =
+            'Tahlil uchun kamida uskuna, TAG, signal/alarm '
+            'yoki nosozlik tavsifini kiriting.';
+      });
+      return;
+    }
+
+    setState(() {
+      analysisResult =
+          'DIAGNOSTIKA SO‘ROVI QABUL QILINDI\n\n'
+          'Uskuna: ${equipment.text.isEmpty ? "Kiritilmagan" : equipment.text}\n'
+          'TAG: ${tag.text.isEmpty ? "Kiritilmagan" : tag.text}\n'
+          'Signal/Alarm: ${alarm.text.isEmpty ? "Kiritilmagan" : alarm.text}\n\n'
+          'Kirish bosimi: ${inletPressure.text.isEmpty ? "-" : inletPressure.text}\n'
+          'Chiqish bosimi: ${outletPressure.text.isEmpty ? "-" : outletPressure.text}\n'
+          'Gaz sarfi: ${gasFlow.text.isEmpty ? "-" : gasFlow.text}\n'
+          'Harorat: ${temperature.text.isEmpty ? "-" : temperature.text}\n'
+          'Vibratsiya: ${vibration.text.isEmpty ? "-" : vibration.text}\n'
+          'RPM: ${rpm.text.isEmpty ? "-" : rpm.text}\n\n'
+          'Hozir bu pilot interfeys. Keyingi bosqichda ushbu '
+          'maʼlumotlar AI serveriga yuborilib, texnik hujjatlar, '
+          'sxemalar, reglamentlar, SCADA/trend va nosozliklar '
+          'tarixi bilan solishtiriladi.';
+    });
+  }
+  class WorkResultPage extends StatefulWidget {
+  final String equipment;
+  final String tag;
+  final String alarm;
+
+  const WorkResultPage({
+    super.key,
+    required this.equipment,
+    required this.tag,
+    required this.alarm,
+  });
+
+  @override
+  State<WorkResultPage> createState() => _WorkResultPageState();
+}
+
+class _WorkResultPageState extends State<WorkResultPage> {
+  final realCause = TextEditingController();
+  final completedWork = TextEditingController();
+  final repairedPart = TextEditingController();
+  final finalResult = TextEditingController();
+
+  final engineers = TextEditingController();
+  final department = TextEditingController();
+
+  bool saved = false;
+
+  Widget field(
+    String label,
+    TextEditingController controller, {
+    int maxLines = 1,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+  }
+
+  void saveResult() {
+    if (completedWork.text.trim().isEmpty ||
+        finalResult.text.trim().isEmpty ||
+        engineers.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Bajarilgan ish, yakuniy natija va muhandis nomini kiriting.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      saved = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    realCause.dispose();
+    completedWork.dispose();
+    repairedPart.dispose();
+    finalResult.dispose();
+    engineers.dispose();
+    department.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ish yakuni'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Nosozlik bo‘yicha yakuniy hisobot',
+            style: TextStyle(
+              fontSize: 23,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                'Uskuna: ${widget.equipment.isEmpty ? "-" : widget.equipment}\n'
+                'TAG: ${widget.tag.isEmpty ? "-" : widget.tag}\n'
+                'Signal/Alarm: ${widget.alarm.isEmpty ? "-" : widget.alarm}',
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          field(
+            'Aniqlangan haqiqiy sabab',
+            realCause,
+            maxLines: 3,
+          ),
+
+          field(
+            'Bajarilgan ishlar',
+            completedWork,
+            maxLines: 5,
+          ),
+
+          field(
+            'Taʼmirlangan / almashtirilgan qism',
+            repairedPart,
+            maxLines: 3,
+          ),
+
+          field(
+            'Taʼmirdan keyingi yakuniy natija',
+            finalResult,
+            maxLines: 4,
+          ),
+
+          const SizedBox(height: 8),
 
           const Text(
-            'TEXNOLOGIK PARAMETRLAR',
+            'ISHNI BAJARGAN MUTAXASSISLAR',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              fontSize: 17,
             ),
           ),
 
           const SizedBox(height: 12),
 
-          input(
-            'Kirish bosimi',
-            inletPressureController,
-            keyboardType: TextInputType.number,
+          field(
+            'Muhandis / mutaxassislar F.I.Sh.',
+            engineers,
+            maxLines: 3,
           ),
 
-          input(
-            'Chiqish bosimi',
-            outletPressureController,
-            keyboardType: TextInputType.number,
+          field(
+            'Bo‘lim (KIPiA, Elektr, Mexanika, Texnolog...)',
+            department,
           ),
-
-          input(
-            'Gaz sarfi',
-            gasFlowController,
-            keyboardType: TextInputType.number,
-          ),
-
-          input(
-            'Harorat',
-            temperatureController,
-            keyboardType: TextInputType.number,
-          ),
-
-          input(
-            'Vibratsiya',
-            vibrationController,
-            keyboardType: TextInputType.number,
-          ),
-
-          input(
-            'RPM / aylanish tezligi',
-            rpmController,
-            keyboardType: TextInputType.number,
-          ),
-
-          TextField(
-            controller: descriptionController,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Nosozlik haqida qo‘shimcha maʼlumot',
-              hintText:
-                  'Masalan: bosim pasaydi, signal vaqti-vaqti bilan yo‘qolmoqda...',
-              border: OutlineInputBorder(),
-            ),
-          ),
-
-          const SizedBox(height: 20),
 
           SizedBox(
-            height: 55,
+            height: 54,
             child: FilledButton.icon(
-              onPressed: analyze,
-              icon: const Icon(Icons.psychology),
+              onPressed: saveResult,
+              icon: const Icon(Icons.save),
               label: const Text(
-                'AI TAHLIL',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.bold,
-                ),
+                'NOSOZLIKLAR TARIXIGA SAQLASH',
               ),
             ),
           ),
 
-          if (result.isNotEmpty) ...[
-            const SizedBox(height: 24),
-
-            const Text(
-              'TAHLIL NATIJASI',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
+          if (saved) ...[
+            const SizedBox(height: 20),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  result,
+                  '✓ Hisobot tayyor.\n\n'
+                  'Bajargan mutaxassislar:\n${engineers.text}\n\n'
+                  'Bajarilgan ishlar:\n${completedWork.text}\n\n'
+                  'Yakuniy natija:\n${finalResult.text}\n\n'
+                  'Keyingi bosqichda bu maʼlumotlar doimiy '
+                  'maʼlumotlar bazasiga saqlanadi.',
                   style: const TextStyle(
-                    fontSize: 16,
                     height: 1.5,
-                    
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// =====================================================
+// QOLGAN BO'LIMLAR
+// =====================================================
+
+class SimplePage extends StatelessWidget {
+  final String title;
+  final String text;
+
+  const SimplePage({
+    super.key,
+    required this.title,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 17,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'AI MUHANDIS — PILOT VERSIYA',
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+  

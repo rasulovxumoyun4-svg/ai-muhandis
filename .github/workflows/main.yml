@@ -23,8 +23,12 @@ jobs:
         run: |
           cp lib/lib/main.dart /tmp/main.dart
           flutter create --platforms=android --project-name ai_muhandis .
-          sed -i -E 's/compileSdk[[:space:]]*=[[:space:]]*.*/compileSdk = 36/' android/app/build.gradle.kts
           cp /tmp/main.dart lib/main.dart
+
+      - name: Set Android compileSdk 36
+        run: |
+          sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle.kts
+          grep "compileSdk" android/app/build.gradle.kts
 
       - name: Get packages
         run: flutter pub get

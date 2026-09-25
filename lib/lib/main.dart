@@ -145,6 +145,13 @@ class HomePage extends StatelessWidget {
             subtitle: 'Oldingi nosozlik va taʼmirlar',
             page: const HistoryPage(),
           ),
+          menuCard(
+  context,
+  icon: Icons.storage,
+  title: 'Uskunalar bazasi',
+  subtitle: 'Supabase bazasidagi uskunalar',
+  page: const EquipmentPage(),
+),
 
           menuCard(
             context,

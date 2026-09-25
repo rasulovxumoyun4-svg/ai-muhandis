@@ -1,6 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
 
-void main() {
+  await Supabase.initialize(
+    url: Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'PROJECT_URL_SHU_YERGA',
+    https://wuyfzsbrlicsklhizpeo.supabase.co/rest/v1/
+  );
+
+  runApp(const AiMuhandisApp());
+}
+    anonKey: 'PUBLISHABLE_KEY_SHU_YERGA',
+  );
+
   runApp(const AiMuhandisApp());
 }
 

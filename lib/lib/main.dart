@@ -10,12 +10,7 @@ Future<void> main() async {
 
   runApp(const AiMuhandisApp());
 }
-}
-    anonKey: 'PUBLISHABLE_KEY_SHU_YERGA',
-  );
 
-  runApp(const AiMuhandisApp());
-}
 
 class AiMuhandisApp extends StatelessWidget {
   const AiMuhandisApp({super.key});

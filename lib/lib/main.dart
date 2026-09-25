@@ -956,7 +956,12 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
               upsert: false,
             ),
           );
-
+await Supabase.instance.client
+    .from('Documents')
+    .insert({
+  'File_name': file.name,
+  'Storage_path': safeName,
+});
       setState(() {
         _selectedFileName = file.name;
         _message = 'Hujjat muvaffaqiyatli saqlandi.';

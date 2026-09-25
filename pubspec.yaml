@@ -10,7 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  file_picker: ^8.1.7
+  file_picker: ^10.3.10
   image_picker: ^1.1.2
   supabase_flutter: ^2.10.0
 

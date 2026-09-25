@@ -121,12 +121,8 @@ class HomePage extends StatelessWidget {
             icon: Icons.description,
             title: 'Texnik hujjatlar',
             subtitle: 'Pasport, sxema va reglament',
-            page: const InfoPage(
-              title: 'Texnik hujjatlar',
-              description:
-                  'Pasportlar, P&ID, elektr, KIPiA, avtomatika sxemalari va reglamentlar.',
+            page: const PdfUploadPage(),
             ),
-          ),
 
           menuCard(
             context,
@@ -895,6 +891,162 @@ class InfoPage extends StatelessWidget {
           const Text(
             'AI MUHANDIS — PILOT VERSIYA',
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+// ============================================================
+// TEXNIK HUJJATLAR — PDF / PASPORT / REGLAMENT
+// ============================================================
+
+class PdfUploadPage extends StatefulWidget {
+  const PdfUploadPage({super.key});
+
+  @override
+  State<PdfUploadPage> createState() => _PdfUploadPageState();
+}
+
+class _PdfUploadPageState extends State<PdfUploadPage> {
+  bool _loading = false;
+  String? _selectedFileName;
+  String? _message;
+
+  Future<void> _selectAndUploadPdf() async {
+    try {
+      setState(() {
+        _loading = true;
+        _message = null;
+      });
+
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        setState(() {
+          _loading = false;
+        });
+        return;
+      }
+
+      final file = result.files.single;
+
+      if (file.bytes == null) {
+        setState(() {
+          _loading = false;
+          _message = 'PDF faylni o‘qib bo‘lmadi.';
+        });
+        return;
+      }
+
+      final safeName =
+          '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+
+      await Supabase.instance.client.storage
+          .from('technical-documents')
+          .uploadBinary(
+            safeName,
+            file.bytes!,
+            fileOptions: const FileOptions(
+              contentType: 'application/pdf',
+              upsert: false,
+            ),
+          );
+
+      setState(() {
+        _selectedFileName = file.name;
+        _message = 'Hujjat muvaffaqiyatli saqlandi.';
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _message = 'Xatolik: $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Texnik hujjatlar'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          const Icon(
+            Icons.picture_as_pdf,
+            size: 80,
+          ),
+
+          const SizedBox(height: 20),
+
+          const Text(
+            'Pasport, reglament va sxemalar',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          const Text(
+            'Uskuna pasporti, reglament, P&ID, elektr, '
+            'KIPiA va avtomatika hujjatlarini PDF shaklida kiriting.',
+            textAlign: TextAlign.center,
+          ),
+
+          const SizedBox(height: 30),
+
+          ElevatedButton.icon(
+            onPressed: _loading ? null : _selectAndUploadPdf,
+            icon: const Icon(Icons.upload_file),
+            label: Text(
+              _loading ? 'Yuklanmoqda...' : 'PDF tanlash va yuklash',
+            ),
+          ),
+
+          const SizedBox(height: 25),
+
+          if (_selectedFileName != null)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.picture_as_pdf),
+                title: Text(_selectedFileName!),
+                subtitle: const Text(
+                  'Texnik hujjat bazaga yuklandi',
+                ),
+                trailing: const Icon(Icons.check_circle),
+              ),
+            ),
+
+          if (_message != null) ...[
+            const SizedBox(height: 20),
+            Text(
+              _message!,
+              textAlign: TextAlign.center,
+            ),
+          ],
+
+          const SizedBox(height: 30),
+
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Keyingi bosqichda AI ushbu hujjatlardan '
+                'signal yoki alarmni qidiradi, uni o‘zbekchaga '
+                'tarjima qiladi, tegishli sahifa va sxemani topadi '
+                'hamda hujjatga tayangan holda sabab va tavsiyani ko‘rsatadi.',
+              ),
+            ),
           ),
         ],
       ),

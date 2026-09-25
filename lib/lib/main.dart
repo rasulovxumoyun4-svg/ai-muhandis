@@ -4,15 +4,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
-    url: Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  await Supabase.initialize(
-    url: 'PROJECT_URL_SHU_YERGA',
-    https://wuyfzsbrlicsklhizpeo.supabase.co/rest/v1/
+    url: 'https://wuyfzsbrlicsklhizpeo.supabase.co',
+    anonKey: 'SIZ_NUSXALAGAN_PUBLISHABLE_KEY',
   );
 
   runApp(const AiMuhandisApp());
+}
 }
     anonKey: 'PUBLISHABLE_KEY_SHU_YERGA',
   );

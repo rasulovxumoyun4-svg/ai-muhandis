@@ -23,6 +23,7 @@ jobs:
         run: |
           cp lib/lib/main.dart /tmp/main.dart
           flutter create --platforms=android --project-name ai_muhandis .
+          sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
           cp /tmp/main.dart lib/main.dart
 
       - name: Get packages

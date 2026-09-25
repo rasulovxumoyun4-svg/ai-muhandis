@@ -14,21 +14,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      - name: Create Flutter project
+      - name: Create Android project
         run: |
           cp lib/lib/main.dart /tmp/main.dart
           flutter create --platforms=android --project-name ai_muhandis .
           cp /tmp/main.dart lib/main.dart
 
-      - name: Set Android compileSdk 36
+      - name: Force Android API 36
         run: |
-          sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle.kts
-          grep "compileSdk" android/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for p in Path(".").rglob("build.gradle.kts"):
+              text = p.read_text()
+              text = text.replace(
+                  "compileSdk = flutter.compileSdkVersion",
+                  "compileSdk = 36"
+              )
+              p.write_text(text)
+
+          for p in Path(".").rglob("build.gradle"):
+              text = p.read_text()
+              text = text.replace(
+                  "compileSdkVersion flutter.compileSdkVersion",
+                  "compileSdkVersion 36"
+              )
+              p.write_text(text)
+          PY
 
       - name: Get packages
         run: flutter pub get

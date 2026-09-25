@@ -1,19 +1,17 @@
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
-    url: 
-    'https://wuyfzsbrlicsklhizpeo
-    .supabase.co',
-    anonkey:
-    sb_publishable_sWBh1iSIFp9e7TC0eGF4tA_lhXL3iZ9
+    url: 'https://wuyfzsbrlicsklhizpeo.supabase.co',
+    anonKey: 'sb_publishable_sWBh1iSIFp9e7TC0eGF4tA_lhXL3iZ9',
   );
 
   runApp(const AiMuhandisApp());
 }
-
 
 class AiMuhandisApp extends StatelessWidget {
   const AiMuhandisApp({super.key});

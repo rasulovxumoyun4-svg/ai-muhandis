@@ -60,7 +60,16 @@ class HomePage extends StatelessWidget {
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: () {
-          openPage(context, title, text);
+          if (title == 'AI Diagnostika') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const DiagnosticPage(),
+              ),
+            );
+          } else {
+            openPage(context, title, text);
+          }
         },
       ),
     );
@@ -93,8 +102,7 @@ class HomePage extends StatelessWidget {
             Icons.psychology,
             'AI Diagnostika',
             'Nosozlikni aniqlash va tahlil qilish',
-            'Uskuna, TAG, signal va parametrlar asosida '
-                'nosozlik diagnostikasi shu bo‘limda amalga oshiriladi.',
+            '',
           ),
 
           menu(
@@ -150,66 +158,111 @@ class HomePage extends StatelessWidget {
             'Bosim, gaz sarfi, harorat, vibratsiya va '
                 'RPM sutkalik nazorat qilinadi.',
           ),
-          menu(
-            context,
-            Icons.chat,
-            'AI ga savol',
-            'Texnik savol berish',
-            'Muhandis texnik savolini kiritadi. '
-                'Keyingi bosqichda AI serveri shu bo‘limga ulanadi.',
+          input(
+            'TAG raqami',
+            tagController,
           ),
-        ],
-      ),
-    );
-  }
-}
 
-class SimplePage extends StatelessWidget {
-  final String title;
-  final String text;
+          input(
+            'Signal / Alarm / Trip',
+            alarmController,
+          ),
 
-  const SimplePage({
-    super.key,
-    required this.title,
-    required this.text,
-  });
+          const SizedBox(height: 10),
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 26,
+          const Text(
+            'TEXNOLOGIK PARAMETRLAR',
+            style: TextStyle(
               fontWeight: FontWeight.bold,
+              fontSize: 17,
             ),
           ),
+
+          const SizedBox(height: 12),
+
+          input(
+            'Kirish bosimi',
+            inletPressureController,
+            keyboardType: TextInputType.number,
+          ),
+
+          input(
+            'Chiqish bosimi',
+            outletPressureController,
+            keyboardType: TextInputType.number,
+          ),
+
+          input(
+            'Gaz sarfi',
+            gasFlowController,
+            keyboardType: TextInputType.number,
+          ),
+
+          input(
+            'Harorat',
+            temperatureController,
+            keyboardType: TextInputType.number,
+          ),
+
+          input(
+            'Vibratsiya',
+            vibrationController,
+            keyboardType: TextInputType.number,
+          ),
+
+          input(
+            'RPM / aylanish tezligi',
+            rpmController,
+            keyboardType: TextInputType.number,
+          ),
+
+          TextField(
+            controller: descriptionController,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Nosozlik haqida qo‘shimcha maʼlumot',
+              hintText:
+                  'Masalan: bosim pasaydi, signal vaqti-vaqti bilan yo‘qolmoqda...',
+              border: OutlineInputBorder(),
+            ),
+          ),
+
           const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                text,
-                style: const TextStyle(
+
+          SizedBox(
+            height: 55,
+            child: FilledButton.icon(
+              onPressed: analyze,
+              icon: const Icon(Icons.psychology),
+              label: const Text(
+                'AI TAHLIL',
+                style: TextStyle(
                   fontSize: 17,
-                  height: 1.5,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          const Text(
-            'AI MUHANDIS — PILOT VERSIYA',
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}
+
+          if (result.isNotEmpty) ...[
+            const SizedBox(height: 24),
+
+            const Text(
+              'TAHLIL NATIJASI',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  result,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    

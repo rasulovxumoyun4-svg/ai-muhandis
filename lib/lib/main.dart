@@ -5,7 +5,7 @@ Future<void> main() async {
 
   await Supabase.initialize(
     url: 'https://wuyfzsbrlicsklhizpeo.supabase.co',
-    anonKey: 'SIZ_NUSXALAGAN_PUBLISHABLE_KEY',
+    sb_publishable_sWBh1iSIFp9e7TC0eGF4tA_lhXL3iZ9
   );
 
   runApp(const AiMuhandisApp());

@@ -736,7 +736,81 @@ class ManagerPage extends StatelessWidget {
 // =====================================================
 // NOSOZLIKLAR TARIXI
 // =====================================================
+class EquipmentPage extends StatefulWidget {
+  const EquipmentPage({super.key});
 
+  @override
+  State<EquipmentPage> createState() => _EquipmentPageState();
+}
+
+class _EquipmentPageState extends State<EquipmentPage> {
+  List<Map<String, dynamic>> equipment = [];
+  bool loading = true;
+  String error = '';
+
+  @override
+  void initState() {
+    super.initState();
+    loadEquipment();
+  }
+
+  Future<void> loadEquipment() async {
+    try {
+      final data = await Supabase.instance.client
+          .from('equipment')
+          .select();
+
+      setState(() {
+        equipment = List<Map<String, dynamic>>.from(data);
+        loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        error = e.toString();
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Uskunalar bazasi'),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : error.isNotEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text('Baza xatosi:\n$error'),
+                )
+              : equipment.isEmpty
+                  ? const Center(
+                      child: Text('Bazadan uskuna topilmadi'),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: equipment.length,
+                      itemBuilder: (context, index) {
+                        final item = equipment[index];
+
+                        return Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.precision_manufacturing),
+                            title: Text(
+                              item['name']?.toString() ?? 'Nomsiz uskuna',
+                            ),
+                            subtitle: Text(
+                              'ID: ${item['id'] ?? '-'}',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+    );
+  }
+}
 class HistoryPage extends StatelessWidget {
   const HistoryPage({super.key});
   @override

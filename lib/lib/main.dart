@@ -993,7 +993,7 @@ await Supabase.instance.client
     await Supabase.instance.client
         .from('Documents')
         .delete()
-        .eq('storage_path', path);
+        .eq('Storage_path', path);
 
     setState(() {
       _selectedFileName = null;

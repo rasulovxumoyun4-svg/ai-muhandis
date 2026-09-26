@@ -214,7 +214,64 @@ class _DiagnosticPageState extends State<DiagnosticPage> {
   final problemController = TextEditingController();
 
   String result = '';
+Uint8List? _operatorImageBytes;
+   Future<void> _pickOperatorImage() async {
+  final image = await ImagePicker().pickImage(
+    source: ImageSource.gallery,
+    imageQuality: 85,
+  );
 
+  if (image == null) return;
+
+  final bytes = await image.readAsBytes();
+
+  setState(() {
+    _operatorImageBytes = bytes;
+  });
+}
+
+Future<void> _sendToAI() async {
+  try {
+    setState(() {
+      result = 'AI tahlil qilmoqda...';
+    });
+
+    final response = await Supabase.instance.client.functions.invoke(
+      'ai_diagnose',
+      body: {
+        'question': problemController.text.trim(),
+        'equipment': equipmentController.text.trim(),
+        'tag': tagController.text.trim(),
+        'alarm': alarmController.text.trim(),
+        'inlet': inletController.text.trim(),
+        'outlet': outletController.text.trim(),
+        'flow': flowController.text.trim(),
+        'temperature': temperatureController.text.trim(),
+        'vibration': vibrationController.text.trim(),
+        'rpm': rpmController.text.trim(),
+        'imageBase64': _operatorImageBytes == null
+            ? null
+            : base64Encode(_operatorImageBytes!),
+      },
+    );
+
+    final data = response.data;
+
+    setState(() {
+      if (data is Map && data['answer'] != null) {
+        result = data['answer'].toString();
+      } else if (data is Map && data['error'] != null) {
+        result = 'AI xatoligi: ${data['error']}';
+      } else {
+        result = 'AI javobi olinmadi.';
+      }
+    });
+  } catch (e) {
+    setState(() {
+      result = 'AI bilan ulanishda xatolik: $e';
+    });
+  }
+}
   Widget inputField(
     String label,
     TextEditingController controller, {
@@ -235,6 +292,7 @@ class _DiagnosticPageState extends State<DiagnosticPage> {
       ),
     );
   }
+  
 
   void analyze() {
     if (equipmentController.text.trim().isEmpty &&

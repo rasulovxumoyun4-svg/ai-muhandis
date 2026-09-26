@@ -30,6 +30,7 @@ jobs:
           cp lib/lib/main.dart /tmp/main.dart
           flutter create --platforms=android --project-name ai_muhandis .
           cp /tmp/main.dart lib/main.dart
+          sed -i 's/Technical-documents/technical-documents/g' lib/main.dart
           sed -i '/<application/i\    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
 
       - name: Force Android API 36

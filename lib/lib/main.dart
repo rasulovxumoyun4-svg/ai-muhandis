@@ -61,7 +61,6 @@ class HomePage extends StatelessWidget {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -135,7 +134,6 @@ class HomePage extends StatelessWidget {
                   'Datchik → JB → kabel → terminal → marshalling → PLC → SCADA.',
             ),
           ),
-
           menuCard(
             context,
             icon: Icons.history,
@@ -913,7 +911,19 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
   String? _selectedFileName;
   String? _selectedStoragePath;
   String? _message;
+Future<void> _deleteSelectedFile() async {
+  if (_selectedStoragePath == null) return;
 
+  await Supabase.instance.client.storage
+      .from('technical-documents')
+      .remove([_selectedStoragePath!]);
+
+  setState(() {
+    _selectedStoragePath = null;
+    _selectedFileName = null;
+    _message = 'Fayl o‘chirildi';
+  });
+}
   Future<void> _selectAndUploadPdf() async {
     try {
       setState(() {

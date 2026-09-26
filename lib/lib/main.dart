@@ -911,6 +911,7 @@ class PdfUploadPage extends StatefulWidget {
 class _PdfUploadPageState extends State<PdfUploadPage> {
   bool _loading = false;
   String? _selectedFileName;
+  String? _selectedStoragePath;
   String? _message;
 
   Future<void> _selectAndUploadPdf() async {
@@ -962,7 +963,8 @@ await Supabase.instance.client
   'Storage_path': safeName,
 });
       setState(() {
-        _selectedFileName = file.name;
+        _selectedFileName = file.name; 
+        _selectedStoragePath = safeName;
         _message = 'Hujjat muvaffaqiyatli saqlandi.';
         _loading = false;
       });
@@ -973,7 +975,39 @@ await Supabase.instance.client
       });
     }
   }
+ Future<void> _deleteSelectedPdf() async {
+  if (_selectedStoragePath == null) return;
 
+  try {
+    setState(() {
+      _loading = true;
+      _message = null;
+    });
+
+    final path = _selectedStoragePath!;
+
+    await Supabase.instance.client.storage
+        .from('technical-documents')
+        .remove([path]);
+
+    await Supabase.instance.client
+        .from('Documents')
+        .delete()
+        .eq('storage_path', path);
+
+    setState(() {
+      _selectedFileName = null;
+      _selectedStoragePath = null;
+      _message = 'Hujjat o‘chirildi.';
+      _loading = false;
+    });
+  } catch (e) {
+    setState(() {
+      _loading = false;
+      _message = 'O‘chirishda xatolik: $e';
+    });
+  }
+}
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1027,7 +1061,10 @@ await Supabase.instance.client
                 subtitle: const Text(
                   'Texnik hujjat bazaga yuklandi',
                 ),
-                trailing: const Icon(Icons.check_circle),
+                trailing: IconButton(
+  icon: const Icon(Icons.delete),
+  onPressed: _loading ? null : _deleteSelectedPdf,
+),
               ),
             ),
 

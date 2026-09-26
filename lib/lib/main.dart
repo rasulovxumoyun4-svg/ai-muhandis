@@ -167,11 +167,7 @@ class HomePage extends StatelessWidget {
             icon: Icons.chat,
             title: 'AI ga savol',
             subtitle: 'Texnik savol berish',
-            page: const InfoPage(
-              title: 'AI ga savol',
-              description:
-                  'Texnik savollarni AI muhandisga yuborish bo‘limi.',
-            ),
+            page: const DiagnosticPage(),
           ),
 
           const Divider(height: 32),
@@ -379,7 +375,38 @@ Future<void> _sendToAI() async {
             'Signal / Alarm / Trip',
             alarmController,
           ),
+ElevatedButton.icon(
+  onPressed: _pickOperatorImage,
+  icon: const Icon(Icons.image),
+  label: const Text('Operator rasmi tanlash'),
+),
 
+if (_operatorImageBytes != null) ...[
+  const SizedBox(height: 12),
+  Image.memory(
+    _operatorImageBytes!,
+    height: 200,
+    fit: BoxFit.cover,
+  ),
+],
+
+const SizedBox(height: 12),
+
+inputField(
+  'AI ga savol / izoh',
+  problemController,
+  lines: 4,
+),
+
+const SizedBox(height: 12),
+
+ElevatedButton.icon(
+  onPressed: _sendToAI,
+  icon: const Icon(Icons.smart_toy),
+  label: const Text('AI ga yuborish'),
+),
+
+const SizedBox(height: 16),
           const SizedBox(height: 8),
 
           const Text(

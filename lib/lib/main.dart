@@ -1419,6 +1419,6 @@ if (hourlyData.isNotEmpty) ...[
 ],
     ],
   ),
-),
+);
   }
 }

@@ -4,7 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+class AppSession {
+  static String role = 'operator';
 
+  static bool get isSuperAdmin => role == 'super_admin';
+  static bool get isAdmin => role == 'admin' || role == 'super_admin';
+}
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -91,6 +96,7 @@ class HomePage extends StatelessWidget {
             subtitle: 'Nosozlikni aniqlash va tahlil qilish',
             page: const DiagnosticPage()
             ),
+          if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
  menuCard(
   context,
   icon: Icons.chat,
@@ -106,7 +112,7 @@ menuCard(
   subtitle: 'Soatlik parametrlar va sutkalik tahlil',
   page: const TechnologyPage(),
 ),         
-
+if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
             icon: Icons.warning_amber,
@@ -118,7 +124,7 @@ menuCard(
                   'Alarm, Trip va himoya signallarini tahlil qilish bo‘limi.',
             ),
           ),
-
+if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
             icon: Icons.show_chart,
@@ -130,7 +136,7 @@ menuCard(
                   'SCADA ekranlari va trend maʼlumotlarini tahlil qilish bo‘limi.',
             ),
           ),
-
+if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
             icon: Icons.description,
@@ -138,7 +144,7 @@ menuCard(
             subtitle: 'Pasport, sxema va reglament',
             page: const PdfUploadPage(),
             ),
-
+if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
             icon: Icons.cable,
@@ -150,6 +156,7 @@ menuCard(
                   'Datchik → JB → kabel → terminal → marshalling → PLC → SCADA.',
             ),
           ),
+          if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
             icon: Icons.history,
@@ -157,6 +164,7 @@ menuCard(
             subtitle: 'Oldingi nosozlik va taʼmirlar',
             page: const HistoryPage(),
           ),
+          if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
   context,
   icon: Icons.storage,
@@ -170,15 +178,11 @@ menuCard(
             icon: Icons.monitor_heart,
             title: 'Sutkalik monitoring',
             subtitle: 'Asosiy parametrlarni nazorat qilish',
-            page: const InfoPage(
-              title: 'Sutkalik monitoring',
-              description:
-                  'Bosim, gaz sarfi, harorat, vibratsiya va RPM monitoringi.',
-            ),
+            page: const MonitoringPage(),
           ), 
 
           const Divider(height: 32),
-
+if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
             icon: Icons.admin_panel_settings,
@@ -186,7 +190,15 @@ menuCard(
             subtitle: 'Ishlar va nosozliklarni nazorat qilish',
             page: const ManagerPage(),
           ),
-        ],
+      if (AppSession.role == 'super_admin')
+  menuCard(
+    context,
+    icon: Icons.manage_accounts,
+    title: 'Foydalanuvchilar',
+    subtitle: 'Admin va operatorlarni boshqarish',
+    page: const UserManagementPage(),
+  ),  
+        
       ),
     );
   }
@@ -450,7 +462,6 @@ const SizedBox(height: 16),
     );
   }
 }
-
 // =====================================================
 // ISH YAKUNI
 // =====================================================
@@ -1309,6 +1320,7 @@ void _saveHourlyData() {
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
       TextField(
         controller: inletPressureController,
         keyboardType: TextInputType.number,
@@ -1381,6 +1393,7 @@ void _saveHourlyData() {
         label: const Text('Soatlik ma’lumotni saqlash'),
       ),
       const SizedBox(height: 20),
+      ],
 
 if (hourlyData.isNotEmpty) ...[
   const Text(
@@ -1391,7 +1404,9 @@ if (hourlyData.isNotEmpty) ...[
     ),
   ),
   const SizedBox(height: 10),
+  if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
   ElevatedButton.icon(
+
   onPressed: deleteAllTechnologyData,
   icon: const Icon(Icons.delete_forever),
   label: const Text('Barcha maʼlumotlarni o‘chirish'),
@@ -1430,15 +1445,192 @@ const SizedBox(height: 10),
       );
   }
 }
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
   @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  bool loading = false;
+  String errorText = '';
+
+  Future<void> login() async {
+    setState(() {
+      loading = true;
+      errorText = '';
+    });
+
+    try {
+      final response =
+          await Supabase.instance.client.auth.signInWithPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text,
+      );
+
+      final user = response.user;
+
+      if (user == null) {
+        throw Exception('Foydalanuvchi topilmadi');
+      }
+
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+      final role = profile['role'] as String;
+AppSession.role = role;
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const HomePage(),
+        ),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kirish muvaffaqiyatli: $role')),
+      );
+    } catch (e) {
+      setState(() {
+        errorText = 'Kirishda xatolik: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('AI Muhandis - Kirish'),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI Muhandis'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Tizimga kirish',
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Parol',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (errorText.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(errorText),
+              ),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: loading ? null : login,
+                child: Text(
+                  loading ? 'Kutilmoqda...' : 'KIRISH',
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
+class UserManagementPage extends StatefulWidget {
+  const UserManagementPage({super.key});
+
+  @override
+  State<UserManagementPage> createState() => _UserManagementPageState();
+}
+          class _UserManagementPageState extends State<UserManagementPage> {
+            List<Map<String, dynamic>> users = [];
+bool loading = true;
+            Future<void> loadUsers() async {
+  final data = await Supabase.instance.client
+      .from('profiles')
+      .select('id, email, role');
+
+  if (!mounted) return;
+
+  setState(() {
+    users = List<Map<String, dynamic>>.from(data);
+    loading = false;
+  });
+            }
+            @override
+void initState() {
+  super.initState();
+  loadUsers();
+}
+            Future<void> changeRole(String userId, String newRole) async {
+  await Supabase.instance.client
+      .from('profiles')
+      .update({'role': newRole})
+      .eq('id', userId);
+
+  await loadUsers();
+            }
+            @override
+Widget build(BuildContext context) {
+  return Scaffold(
+  appBar: AppBar(
+    title: const Text('Foydalanuvchilar'),
+  ),
+    body: loading
+    ? const Center(child: CircularProgressIndicator())
+    : ListView.builder(
+      itemCount: users.length,
+itemBuilder: (context, index) {
+  final user = users[index];
+  return ListTile(
+  title: Text(user['email'] ?? 'Email yo‘q'),
+  subtitle: Text('Rol: ${user['role']}'),
+    trailing: DropdownButton<String>(
+  value: user['role'],
+  items: const [
+    DropdownMenuItem(value: 'operator', child: Text('Operator')),
+    DropdownMenuItem(value: 'admin', child: Text('Admin')),
+  ],
+      onChanged: (newRole) {
+  if (newRole != null) {
+    changeRole(user['id'], newRole);
+  }
+},
+      );
+      },
+    ),
+  );
+}
+      }

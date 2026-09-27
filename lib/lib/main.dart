@@ -89,8 +89,23 @@ class HomePage extends StatelessWidget {
             icon: Icons.psychology,
             title: 'AI Diagnostika',
             subtitle: 'Nosozlikni aniqlash va tahlil qilish',
-            page: const DiagnosticPage(),
-          ),
+            page: const DiagnosticPage()
+            ),
+ menuCard(
+  context,
+  icon: Icons.chat,
+  title: 'AI ga savol',
+  subtitle: 'Rasm va savol orqali AI javobi',
+  page: const AiQuestionPage(),
+),
+
+menuCard(
+  context,
+  icon: Icons.speed,
+  title: 'Texnologik parametrlar',
+  subtitle: 'Soatlik parametrlar va sutkalik tahlil',
+  page: const TechnologyPage(),
+),         
 
           menuCard(
             context,
@@ -1105,5 +1120,305 @@ await Supabase.instance.client
         ],
       ),
     );
+  }
+}
+class AiQuestionPage extends StatefulWidget {
+  const AiQuestionPage({super.key});
+
+  @override
+  State<AiQuestionPage> createState() => _AiQuestionPageState();
+}
+
+class _AiQuestionPageState extends State<AiQuestionPage> {
+  final questionController = TextEditingController();
+Uint8List? _questionImageBytes;
+String aiAnswer = '';
+   Future<void> _pickQuestionImage() async {
+  final image = await ImagePicker().pickImage(
+    source: ImageSource.gallery,
+    imageQuality: 85,
+  );
+
+  if (image == null) return;
+
+  final bytes = await image.readAsBytes();
+
+  setState(() {
+    _questionImageBytes = bytes;
+  });
+}
+  Future<void> _sendQuestionToAI() async {
+  try {
+    setState(() {
+      aiAnswer = 'AI tahlil qilmoqda...';
+    });
+
+    final response =
+        await Supabase.instance.client.functions.invoke(
+      'ai_diagnose',
+      body: {
+        'question': questionController.text.trim(),
+        'equipment': '',
+        'tag': '',
+        'alarm': '',
+        'inlet': '',
+        'outlet': '',
+        'flow': '',
+        'temperature': '',
+        'vibration': '',
+        'rpm': '',
+        'imageBase64': _questionImageBytes == null
+            ? null
+            : base64Encode(_questionImageBytes!),
+      },
+    );
+
+    final data = response.data;
+
+    setState(() {
+      if (data is Map && data['answer'] != null) {
+        aiAnswer = data['answer'].toString();
+      } else {
+        aiAnswer = data.toString();
+      }
+    });
+  } catch (e) {
+    setState(() {
+      aiAnswer = 'Xatolik: $e';
+    });
+  }
+  }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI ga savol'),
+      ),
+      body: SingleChildScrollView(
+  padding: const EdgeInsets.all(16),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ElevatedButton.icon(
+        onPressed: _pickQuestionImage,
+        icon: const Icon(Icons.image),
+        label: const Text('Operator rasmini tanlash'),
+      ),
+
+      if (_questionImageBytes != null) ...[
+        const SizedBox(height: 12),
+        Image.memory(
+          _questionImageBytes!,
+          height: 220,
+          fit: BoxFit.contain,
+        ),
+      ],
+
+      const SizedBox(height: 16),
+
+      TextField(
+        controller: questionController,
+        maxLines: 5,
+        decoration: const InputDecoration(
+          labelText: 'AI ga savol / izoh',
+          border: OutlineInputBorder(),
+        ),
+      ),
+
+      const SizedBox(height: 16),
+
+      FilledButton.icon(
+        onPressed: _sendQuestionToAI,
+        icon: const Icon(Icons.smart_toy),
+        label: const Text('AI ga yuborish'),
+      ),
+      if (aiAnswer.isNotEmpty) ...[
+  const SizedBox(height: 16),
+  const Text(
+    'AI javobi',
+    style: TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+  const SizedBox(height: 8),
+  Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Text(aiAnswer),
+    ),
+  ),
+],
+    ],
+  ),
+),
+    );
+  }
+}
+class TechnologyPage extends StatefulWidget {
+  const TechnologyPage({super.key});
+
+  @override
+  State<TechnologyPage> createState() => _TechnologyPageState();
+}
+
+class _TechnologyPageState extends State<TechnologyPage> {
+  final inletPressureController = TextEditingController();
+final inletTempController = TextEditingController();
+final outletPressureController = TextEditingController();
+final outletTempController = TextEditingController();
+final gasFlowController = TextEditingController();
+final rpmControllerTech = TextEditingController();
+  final List<Map<String, dynamic>> hourlyData = [];
+
+void _saveHourlyData() {
+  final now = DateTime.now();
+
+  final data = {
+    'time':
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+    'inletPressure': inletPressureController.text.trim(),
+    'inletTemp': inletTempController.text.trim(),
+    'outletPressure': outletPressureController.text.trim(),
+    'outletTemp': outletTempController.text.trim(),
+    'gasFlow': gasFlowController.text.trim(),
+    'rpm': rpmControllerTech.text.trim(),
+  };
+
+  setState(() {
+    hourlyData.add(data);
+  });
+
+  inletPressureController.clear();
+  inletTempController.clear();
+  outletPressureController.clear();
+  outletTempController.clear();
+  gasFlowController.clear();
+  rpmControllerTech.clear();
+}
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Texnologik parametrlar'),
+      ),
+    );
+    body: SingleChildScrollView(
+  padding: const EdgeInsets.all(16),
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      TextField(
+        controller: inletPressureController,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Kirish bosimi',
+          border: OutlineInputBorder(),
+        ),
+      ),
+
+      const SizedBox(height: 12),
+
+      TextField(
+        controller: inletTempController,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Kirish temperaturasi',
+          border: OutlineInputBorder(),
+        ),
+      ),
+
+      const SizedBox(height: 12),
+
+      TextField(
+        controller: outletPressureController,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Chiqish bosimi',
+          border: OutlineInputBorder(),
+        ),
+      ),
+
+      const SizedBox(height: 12),
+
+      TextField(
+        controller: outletTempController,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Chiqish temperaturasi',
+          border: OutlineInputBorder(),
+        ),
+      ),
+
+      const SizedBox(height: 12),
+
+      TextField(
+        controller: gasFlowController,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Gaz sarfi',
+          border: OutlineInputBorder(),
+        ),
+      ),
+
+      const SizedBox(height: 12),
+
+      TextField(
+        controller: rpmControllerTech,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'RPM / aylanish tezligi',
+          border: OutlineInputBorder(),
+        ),
+      ),
+
+      const SizedBox(height: 20),
+
+      FilledButton.icon(
+        onPressed: _saveHourlyData,
+        icon: const Icon(Icons.save),
+        label: const Text('Soatlik ma’lumotni saqlash'),
+      ),
+      const SizedBox(height: 20),
+
+if (hourlyData.isNotEmpty) ...[
+  const Text(
+    'Bugungi soatlik ma’lumotlar',
+    style: TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+  const SizedBox(height: 10),
+
+  ...hourlyData.reversed.map(
+    (item) => Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Soat: ${item['time']}',
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text('Kirish bosimi: ${item['inletPressure']}'),
+            Text('Kirish temperaturasi: ${item['inletTemp']}'),
+            Text('Chiqish bosimi: ${item['outletPressure']}'),
+            Text('Chiqish temperaturasi: ${item['outletTemp']}'),
+            Text('Gaz sarfi: ${item['gasFlow']}'),
+            Text('RPM / oborot: ${item['rpm']}'),
+          ],
+        ),
+      ),
+    ),
+  ),
+],
+    ],
+  ),
+),
   }
 }

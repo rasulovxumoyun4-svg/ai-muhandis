@@ -1288,6 +1288,16 @@ void _saveHourlyData() {
   gasFlowController.clear();
   rpmControllerTech.clear();
 }
+  Future<void> deleteAllTechnologyData() async {
+  await Supabase.instance.client
+      .from('technology_data')
+      .delete()
+      .neq('id', 0);
+
+  setState(() {
+    hourlyData.clear();
+  });
+}
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1381,6 +1391,12 @@ if (hourlyData.isNotEmpty) ...[
     ),
   ),
   const SizedBox(height: 10),
+  ElevatedButton.icon(
+  onPressed: deleteAllTechnologyData,
+  icon: const Icon(Icons.delete_forever),
+  label: const Text('Barcha maʼlumotlarni o‘chirish'),
+),
+const SizedBox(height: 10),
 
   ...hourlyData.reversed.map(
     (item) => Card(

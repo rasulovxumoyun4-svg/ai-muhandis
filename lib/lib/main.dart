@@ -198,7 +198,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
     subtitle: 'Admin va operatorlarni boshqarish',
     page: const UserManagementPage(),
   ),  
-        
+        ],
       ),
     );
   }

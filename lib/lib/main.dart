@@ -175,15 +175,7 @@ menuCard(
               description:
                   'Bosim, gaz sarfi, harorat, vibratsiya va RPM monitoringi.',
             ),
-          ),
-
-          menuCard(
-            context,
-            icon: Icons.chat,
-            title: 'AI ga savol',
-            subtitle: 'Texnik savol berish',
-            page: const DiagnosticPage(),
-          ),
+          ), 
 
           const Divider(height: 32),
 
@@ -1302,7 +1294,6 @@ void _saveHourlyData() {
       appBar: AppBar(
         title: const Text('Texnologik parametrlar'),
       ),
-    );
     body: SingleChildScrollView(
   padding: const EdgeInsets.all(16),
   child: Column(

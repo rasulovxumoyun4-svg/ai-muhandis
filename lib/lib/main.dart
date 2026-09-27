@@ -1410,6 +1410,7 @@ if (hourlyData.isNotEmpty) ...[
 ],
     ],
   ),
-);
+),
+      );
   }
 }

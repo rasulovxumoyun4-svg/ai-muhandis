@@ -1273,11 +1273,52 @@ final outletTempController = TextEditingController();
 final gasFlowController = TextEditingController();
 final rpmControllerTech = TextEditingController();
   final List<Map<String, dynamic>> hourlyData = [];
+@override
+void initState() {
+  super.initState();
+  _loadTechnologyData();
+}
+  Future<void> _loadTechnologyData() async {
+  final rows = await Supabase.instance.client
+      .from('technology_data')
+      .select()
+      .order('created_at', ascending: false);
 
-void _saveHourlyData() {
+  setState(() {
+    hourlyData
+      ..clear()
+      ..addAll(List<Map<String, dynamic>>.from(rows));
+  });
+  }
+  String _dateKey(DateTime d) {
+  return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+  List<Map<String, dynamic>> _dataForDate(DateTime date) {
+  final key = _dateKey(date);
+  return hourlyData
+      .where((item) => item['date'] == key)
+      .toList();
+}
+  double _toDouble(dynamic value) {
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+String _compareValue(String name, dynamic today, dynamic yesterday) {
+  final t = _toDouble(today);
+  final y = _toDouble(yesterday);
+  final diff = t - y;
+
+  if (diff > 0) {
+    return '$name kechagidan ${diff.toStringAsFixed(2)} ga yuqori';
+  } else if (diff < 0) {
+    return '$name kechagidan ${diff.abs().toStringAsFixed(2)} ga past';
+  }
+  return '$name kechagi bilan bir xil';
+}
+Future<void> _saveHourlyData() async {
   final now = DateTime.now();
-
   final data = {
+    'date': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
     'time':
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
     'inletPressure': inletPressureController.text.trim(),
@@ -1287,10 +1328,10 @@ void _saveHourlyData() {
     'gasFlow': gasFlowController.text.trim(),
     'rpm': rpmControllerTech.text.trim(),
   };
-
-  setState(() {
-    hourlyData.add(data);
-  });
+await Supabase.instance.client
+    .from('technology_data')
+    .insert(data);
+  await _loadTechnologyData();
 
   inletPressureController.clear();
   inletTempController.clear();
@@ -1304,6 +1345,7 @@ void _saveHourlyData() {
       .from('technology_data')
       .delete()
       .neq('id', 0);
+    await _loadTechnologyData();
 
   setState(() {
     hourlyData.clear();
@@ -1311,6 +1353,24 @@ void _saveHourlyData() {
 }
   @override
   Widget build(BuildContext context) {
+    final todayData = _dataForDate(DateTime.now());
+final yesterdayData =
+    _dataForDate(DateTime.now().subtract(const Duration(days: 1)));
+    final today = todayData.isNotEmpty ? todayData.first : null;
+final yesterday = yesterdayData.isNotEmpty ? yesterdayData.first : null;
+    String dailySummary = '';
+
+if (today != null && yesterday != null) {
+  dailySummary = [
+    
+    _compareValue('Kirish bosimi', today['inlet_pressure'], yesterday['inlet_pressure']),
+    _compareValue('Kirish temperaturasi', today['inlet_temp'], yesterday['inlet_temp']),
+    _compareValue('Chiqish bosimi', today['outlet_pressure'], yesterday['outlet_pressure']),
+    _compareValue('Chiqish temperaturasi', today['outlet_temp'], yesterday['outlet_temp']),
+    _compareValue('Gaz sarfi', today['gas_flow'], yesterday['gas_flow']),
+    _compareValue('RPM', today['rpm'], yesterday['rpm']),
+  ].join('\n');
+}
     return Scaffold(
       appBar: AppBar(
         title: const Text('Texnologik parametrlar'),
@@ -1320,6 +1380,17 @@ void _saveHourlyData() {
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (dailySummary.isNotEmpty) ...[
+  Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Text(
+        'Kunlik diagnostika:\n$dailySummary',
+      ),
+    ),
+  ),
+  const SizedBox(height: 12),
+],
     
       TextField(
         controller: inletPressureController,

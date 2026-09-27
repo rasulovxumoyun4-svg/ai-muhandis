@@ -178,7 +178,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             icon: Icons.monitor_heart,
             title: 'Sutkalik monitoring',
             subtitle: 'Asosiy parametrlarni nazorat qilish',
-            page: MonitoringPage(),
+            page:TechnologyPage (),
           ), 
 
           const Divider(height: 32),

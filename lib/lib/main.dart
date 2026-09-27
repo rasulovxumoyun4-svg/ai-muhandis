@@ -1629,7 +1629,8 @@ itemBuilder: (context, index) {
     changeRole(user['id'], newRole);
   }
 },
-      );
+      ),
+    );
       },
     ),
   );

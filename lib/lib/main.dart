@@ -1320,7 +1320,7 @@ void _saveHourlyData() {
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
+    
       TextField(
         controller: inletPressureController,
         keyboardType: TextInputType.number,
@@ -1393,7 +1393,6 @@ void _saveHourlyData() {
         label: const Text('Soatlik ma’lumotni saqlash'),
       ),
       const SizedBox(height: 20),
-      ],
       
 
 if (hourlyData.isNotEmpty) ...[

@@ -28,7 +28,7 @@ class AiMuhandisApp extends StatelessWidget {
         colorSchemeSeed: Colors.blue,
         useMaterial3: true,
       ),
-      home: const HomePage(),
+      home: const LoginPage(),
     );
   }
 }
@@ -1428,5 +1428,17 @@ const SizedBox(height: 10),
   ),
 ),
       );
+  }
+}
+class LoginPage extends StatelessWidget {
+  const LoginPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Text('AI Muhandis - Kirish'),
+      ),
+    );
   }
 }

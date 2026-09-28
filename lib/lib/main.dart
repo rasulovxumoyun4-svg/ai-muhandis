@@ -178,7 +178,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             icon: Icons.monitor_heart,
             title: 'Sutkalik monitoring',
             subtitle: 'Asosiy parametrlarni nazorat qilish',
-            page:TechnologyPage (),
+             page: const MonitoringPage(),
           ), 
 
           const Divider(height: 32),
@@ -1296,7 +1296,7 @@ void initState() {
   List<Map<String, dynamic>> _dataForDate(DateTime date) {
   final key = _dateKey(date);
   return hourlyData
-      .where((item) => item['date'] == key)
+      .where((item) => item['data'] == key)
       .toList();
 }
   double _toDouble(dynamic value) {
@@ -1316,9 +1316,9 @@ String _compareValue(String name, dynamic today, dynamic yesterday) {
   return '$name kechagi bilan bir xil';
 }
 Future<void> _saveHourlyData() async {
-  final now = DateTime.now();
+  final now = DataTime.now();
   final data = {
-    'date': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+    'data': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
     'time':
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
     'inletPressure': inletPressureController.text.trim(),
@@ -1498,11 +1498,11 @@ const SizedBox(height: 10),
                 fontWeight: FontWeight.bold,
               ),
             ),
-            Text('Kirish bosimi: ${item['inletPressure']}'),
-            Text('Kirish temperaturasi: ${item['inletTemp']}'),
-            Text('Chiqish bosimi: ${item['outletPressure']}'),
-            Text('Chiqish temperaturasi: ${item['outletTemp']}'),
-            Text('Gaz sarfi: ${item['gasFlow']}'),
+            Text('Kirish bosimi: ${item['inlet_pressure']}'),
+            Text('Kirish temperaturasi: ${item['inlet_temp']}'),
+            Text('Chiqish bosimi: ${item['outlet_pressure']}'),
+            Text('Chiqish temperaturasi: ${item['outlet_temp']}'),
+            Text('Gaz sarfi: ${item['gas_flow']}'),
             Text('RPM / oborot: ${item['rpm']}'),
           ],
         ),

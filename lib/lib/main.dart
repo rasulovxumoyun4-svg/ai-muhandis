@@ -1706,18 +1706,78 @@ itemBuilder: (context, index) {
   );
 }
       }
-class MonitoringPage extends StatelessWidget {
-  MonitoringPage({super.key});
+class MonitoringPage extends StatefulWidget {
+  const MonitoringPage({super.key});
 
   @override
+  State<MonitoringPage> createState() => _MonitoringPageState();
+}
+
+class _MonitoringPageState extends State<MonitoringPage> {
+  List<Map<String, dynamic>> dailyData = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    loadDailyData();
+  }
+
+  Future<void> loadDailyData() async {
+    final data = await Supabase.instance.client
+        .from('technology_data')
+        .select()
+        .order('created_at', ascending: false);
+  
+final Map<String, Map<String, dynamic>> grouped = {};
+
+    for (final row in data) {
+      final date = DateTime.parse(row['created_at']).toLocal();
+      final day =
+          '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+      grouped.putIfAbsent(day, () => row);
+    }
+setState(() {
+      dailyData = grouped.entries
+          .map((e) => {'date': e.key, ...e.value})
+          .toList();
+      loading = false;
+    });
+}
+@override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sutkalik monitoring'),
       ),
-      body: const Center(
-        child: Text('Sutkalik ma’lumotlar'),
-      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : dailyData.isEmpty
+              ? const Center(
+                  child: Text('Sutkalik ma’lumotlar mavjud emas'),
+                )
+      : ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: dailyData.length,
+                  itemBuilder: (context, index) {
+                    final item = dailyData[index];
+                    return Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.calendar_today),
+                        title: Text(item['date'].toString()),
+                        subtitle: Text(
+                          'Kirish bosimi: ${item['inlet_pressure'] ?? '-'}\n'
+                          'Kirish T: ${item['inlet_temp'] ?? '-'}\n'
+                          'Chiqish bosimi: ${item['outlet_pressure'] ?? '-'}',
+                        ),
+                        trailing: Text(
+                          'RPM: ${item['rpm'] ?? '-'}',
+                        ),
+                      ),
+                    );
+                    },
+                ),
     );
   }
 }

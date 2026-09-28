@@ -1321,11 +1321,11 @@ Future<void> _saveHourlyData() async {
     'data': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
     'time':
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-    'inletPressure': inletPressureController.text.trim(),
-    'inletTemp': inletTempController.text.trim(),
-    'outletPressure': outletPressureController.text.trim(),
-    'outletTemp': outletTempController.text.trim(),
-    'gasFlow': gasFlowController.text.trim(),
+    'inlet_pressure': inletPressureController.text.trim(),
+     'inlet_temp': inletTempController.text.trim(),
+    'outlet_pressure': outletPressureController.text.trim(),
+    'outlet_temp': outletTempController.text.trim(),
+    'gas_flow': gasFlowController.text.trim(),
     'rpm': rpmControllerTech.text.trim(),
   };
 await Supabase.instance.client

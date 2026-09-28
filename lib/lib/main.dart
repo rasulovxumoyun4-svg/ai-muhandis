@@ -1742,22 +1742,38 @@ class _MonitoringPageState extends State<MonitoringPage> {
         .select()
         .order('created_at', ascending: false);
   
-final Map<String, Map<String, dynamic>> grouped = {};
+final Map<String, List<Map<String, dynamic>>> grouped = {};
 
     for (final row in data) {
       final date = DateTime.parse(row['created_at']).toLocal();
       final day =
           '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-      grouped.putIfAbsent(day, () => row);
+      grouped.putIfAbsent(day, () => []).add(Map<String, dynamic>.from(row));
     }
-setState(() {
-      dailyData = grouped.entries
-          .map((e) => {'date': e.key, ...e.value})
-          .toList();
-      loading = false;
-    });
+final List<Map<String, dynamic>> result = [];
+    for (final entry in grouped.entries) {
+      final rows = entry.value;
+      double avg(String key) {
+ final values = rows.map((r) => double.tryParse('${r[key]}') ?? 0.0).toList();
+        if (values.isEmpty) return 0;
+        return values.reduce((a, b) => a + b) / values.length;
+      }
+      result.add({
+        'date': entry.key,
+        'inlet_pressure': avg('inlet_pressure').toStringAsFixed(2),
+        'inlet_temp': avg('inlet_temp').toStringAsFixed(2),
+        'outlet_pressure': avg('outlet_pressure').toStringAsFixed(2),
+        'outlet_temp': avg('outlet_temp').toStringAsFixed(2),
+        'gas_flow': avg('gas_flow').toStringAsFixed(2),
+        'rpm': avg('rpm').toStringAsFixed(2),
+      });
 }
+     setState(() {
+       dailyData = result;
+       loading = false;
+     });
+  }
 @override
   Widget build(BuildContext context) {
     return Scaffold(

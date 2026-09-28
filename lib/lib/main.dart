@@ -1886,10 +1886,9 @@ final List<Map<String, dynamic>> result = [];
         const SizedBox(height: 8),
         Text(dailyComparison),
         
-      ],
-    ),
-  ),
-),
+],
+        ),
+      ),
 Expanded(
   child: ListView.builder(
     

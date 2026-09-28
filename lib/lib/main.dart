@@ -1904,8 +1904,8 @@ Expanded(
                         subtitle: Text(
                           'Kirish bosimi: ${item['inlet_pressure'] ?? '-'}\n'
                           'Kirish T: ${item['inlet_temp'] ?? '-'}\n'
-                          'Chiqish bosimi: ${item['outlet_pressure'] ?? '-'}',
-                          'Chiqish temperaturasi: ${item['outlet_temp'] ?? '-'}\n'
+'Chiqish bosimi: ${item['outlet_pressure'] ?? '-'}\n'
+'Chiqish temperaturasi: ${item['outlet_temp'] ?? '-'}\n'
 'Gaz sarfi: ${item['gas_flow'] ?? '-'}',
                         ),
                         trailing: Text(

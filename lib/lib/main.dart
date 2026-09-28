@@ -37,8 +37,54 @@ class AiMuhandisApp extends StatelessWidget {
     );
   }
 }
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRole();
+  }
+
+  Future<void> _loadRole() async {
+    final session = Supabase.instance.client.auth.currentSession;
+
+    if (session == null) {
+      if (mounted) {
+        setState(() {
+          loading = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      final profile = await Supabase.instance.client
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .maybeSingle();
+
+      if (profile != null && profile['role'] != null) {
+        AppSession.role = profile['role'].toString();
+      }
+    } catch (e) {
+      debugPrint('Role yuklash xatosi: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +92,14 @@ class AuthGate extends StatelessWidget {
 
     if (session == null) {
       return const LoginPage();
+    }
+
+    if (loading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
     }
 
     return const HomePage();

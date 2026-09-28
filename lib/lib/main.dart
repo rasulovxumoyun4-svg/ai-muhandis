@@ -1706,3 +1706,18 @@ itemBuilder: (context, index) {
   );
 }
       }
+class MonitoringPage extends StatelessWidget {
+  MonitoringPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Sutkalik monitoring'),
+      ),
+      body: const Center(
+        child: Text('Sutkalik ma’lumotlar'),
+      ),
+    );
+  }
+}

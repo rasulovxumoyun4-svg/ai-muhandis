@@ -186,7 +186,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             title: 'Signal va Alarm',
             subtitle: 'Alarm va Trip tahlili',
           page: const SignalAlarmPage(),
-            
+            ),
 if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,

@@ -178,7 +178,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             icon: Icons.monitor_heart,
             title: 'Sutkalik monitoring',
             subtitle: 'Asosiy parametrlarni nazorat qilish',
-             page: const MonitoringPage(),
+             page:  MonitoringPage(),
           ), 
 
           const Divider(height: 32),
@@ -1316,7 +1316,7 @@ String _compareValue(String name, dynamic today, dynamic yesterday) {
   return '$name kechagi bilan bir xil';
 }
 Future<void> _saveHourlyData() async {
-  final now = DataTime.now();
+  final now = DateTime.now();
   final data = {
     'data': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
     'time':

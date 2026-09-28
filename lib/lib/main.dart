@@ -1869,7 +1869,7 @@ final List<Map<String, dynamic>> result = [];
                 )
       : Column(
     children: [
-      Card(
+Card(
   margin: const EdgeInsets.all(12),
   child: Padding(
     padding: const EdgeInsets.all(12),
@@ -1885,35 +1885,35 @@ final List<Map<String, dynamic>> result = [];
         ),
         const SizedBox(height: 8),
         Text(dailyComparison),
-        
-],
-        ),
-      ),
+      ],
+    ),
+  ),
+),
 Expanded(
   child: ListView.builder(
-    
-                  padding: const EdgeInsets.all(12),
-                  itemCount: dailyData.length,
-                  itemBuilder: (context, index) {
-                    final item = dailyData[index];
-                    return Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.calendar_today),
-                        title: Text(item['date'].toString()),
-                        subtitle: Text(
-                          'Kirish bosimi: ${item['inlet_pressure'] ?? '-'}\n'
-                          'Kirish T: ${item['inlet_temp'] ?? '-'}\n'
-'Chiqish bosimi: ${item['outlet_pressure'] ?? '-'}\n'
-'Chiqish temperaturasi: ${item['outlet_temp'] ?? '-'}\n'
-'Gaz sarfi: ${item['gas_flow'] ?? '-'}',
-                        ),
-                        trailing: Text(
-                          'RPM: ${item['rpm'] ?? '-'}',
-                        ),
-                      ),
-                    );
-                    },
-                ),
-    );
+    padding: const EdgeInsets.all(12),
+    itemCount: dailyData.length,
+    itemBuilder: (context, index) {
+      final item = dailyData[index];
+
+      return Card(
+        child: ListTile(
+          leading: const Icon(Icons.calendar_today),
+          title: Text(item['date'].toString()),
+          subtitle: Text(
+            'Kirish bosimi: ${item['inlet_pressure'] ?? '-'}\n'
+            'Kirish T: ${item['inlet_temp'] ?? '-'}\n'
+            'Chiqish bosimi: ${item['outlet_pressure'] ?? '-'}\n'
+            'Chiqish temperaturasi: ${item['outlet_temp'] ?? '-'}\n'
+            'Gaz sarfi: ${item['gas_flow'] ?? '-'}',
+          ),
+          trailing: Text(
+            'RPM: ${item['rpm'] ?? '-'}',
+          ),
+        ),
+      );
+    },
+  ),
+),
   }
 }

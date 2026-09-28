@@ -185,12 +185,8 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             icon: Icons.warning_amber,
             title: 'Signal va Alarm',
             subtitle: 'Alarm va Trip tahlili',
-            page: const InfoPage(
-              title: 'Signal va Alarm',
-              description:
-                  'Alarm, Trip va himoya signallarini tahlil qilish bo‘limi.',
-            ),
-          ),
+          page: const SignalAlarmPage(),
+            
 if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
@@ -1919,4 +1915,142 @@ Expanded(
   ),
 );
 }
+}
+class SignalAlarmPage extends StatefulWidget {
+  const SignalAlarmPage({super.key});
+
+  @override
+  State<SignalAlarmPage> createState() => _SignalAlarmPageState();
+}
+
+class _SignalAlarmPageState extends State<SignalAlarmPage> {
+  final signalController = TextEditingController();
+  final timeController = TextEditingController();
+
+  final List<Map<String, String>> signals = [];
+
+  void addSignal() {
+    final signal = signalController.text.trim();
+    final time = timeController.text.trim();
+
+    if (signal.isEmpty || time.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Signal va vaqtni kiriting'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      signals.add({
+        'signal': signal,
+        'time': time,
+      });
+
+      signals.sort(
+        (a, b) => (a['time'] ?? '').compareTo(b['time'] ?? ''),
+      );
+    });
+
+    signalController.clear();
+    timeController.clear();
+  }
+
+  @override
+  void dispose() {
+    signalController.dispose();
+    timeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Signal va Alarm'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            TextField(
+              controller: signalController,
+              decoration: const InputDecoration(
+                labelText: 'Signal / Alarm / Trip',
+                hintText: 'Masalan: LUBE OIL PRESSURE LOW',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: timeController,
+              decoration: const InputDecoration(
+                labelText: 'Signal vaqti',
+                hintText: 'Masalan: 14:25:32',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: addSignal,
+                icon: const Icon(Icons.add_alert),
+                label: const Text('SIGNALNI QO‘SHISH'),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Signallar ketma-ketligi',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            Expanded(
+              child: signals.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'Hozircha signal kiritilmagan',
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: signals.length,
+                      itemBuilder: (context, index) {
+                        final item = signals[index];
+
+                        return Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: Text('${index + 1}'),
+                            ),
+                            title: Text(
+                              item['signal'] ?? '',
+                            ),
+                            subtitle: Text(
+                              'Vaqt: ${item['time'] ?? ''}',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

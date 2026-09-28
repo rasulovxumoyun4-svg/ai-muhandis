@@ -33,11 +33,24 @@ class AiMuhandisApp extends StatelessWidget {
         colorSchemeSeed: Colors.blue,
         useMaterial3: true,
       ),
-      home: const LoginPage(),
+      home: const AuthGate(),
     );
   }
 }
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
 
+  @override
+  Widget build(BuildContext context) {
+    final session = Supabase.instance.client.auth.currentSession;
+
+    if (session == null) {
+      return const LoginPage();
+    }
+
+    return const HomePage();
+  }
+}
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 

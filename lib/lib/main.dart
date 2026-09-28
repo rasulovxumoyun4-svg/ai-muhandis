@@ -1337,7 +1337,7 @@ Future<void> _saveHourlyData() async {
     'inlet_pressure': double.tryParse(inletPressureController.text.trim()),
      'inlet_temp': double.tryParse(inletTempController.text.trim()),
     'outlet_pressure': double.tryParse(outletPressureController.text.trim()),
-    ''outlet_temp': double.tryParse(outletTempController.text.trim()),
+    'outlet_temp': double.tryParse(outletTempController.text.trim()),
   'gas_flow': double.tryParse(gasFlowController.text.trim()),
     'rpm': double.tryParse(rpmControllerTech.text.trim()),
   };

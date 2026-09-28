@@ -1408,10 +1408,10 @@ await Supabase.instance.client
   rpmControllerTech.clear();
 }
   Future<void> deleteAllTechnologyData() async {
-  await Supabase.instance.client
-      .from('technology_data')
-      .delete()
-      .neq('id', 0);
+await Supabase.instance.client
+    .from('technology_data')
+    .delete()
+    .gte('created_at', '1970-01-01');
     await _loadTechnologyData();
 
   setState(() {

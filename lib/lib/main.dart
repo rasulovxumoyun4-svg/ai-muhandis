@@ -1783,6 +1783,7 @@ class MonitoringPage extends StatefulWidget {
 class _MonitoringPageState extends State<MonitoringPage> {
   List<Map<String, dynamic>> dailyData = [];
   bool loading = true;
+  String dailyComparison = '';
 
   @override
   void initState() {
@@ -1823,6 +1824,32 @@ final List<Map<String, dynamic>> result = [];
         'rpm': avg('rpm').toStringAsFixed(2),
       });
 }
+    if (result.length >= 2) {
+      result.sort((a, b) => b['date'].toString().compareTo(a['date'].toString()));
+  final today = result[0];
+  final yesterday = result[1];
+      double value(Map<String, dynamic> row, String key) {
+  return double.tryParse(row[key]?.toString() ?? '') ?? 0;
+}
+      String compare(String key, String name) {
+  final t = value(today, key);
+  final y = value(yesterday, key);
+  final diff = t - y;
+
+  return '$name: kecha $y, bugun $t, farq ${diff.toStringAsFixed(2)}';
+}
+      dailyComparison = [
+  compare('inlet_pressure', 'Kirish bosimi'),
+  compare('inlet_temp', 'Kirish temperaturasi'),
+  compare('outlet_pressure', 'Chiqish bosimi'),
+  compare('outlet_temp', 'Chiqish temperaturasi'),
+  compare('gas_flow', 'Gaz sarfi'),
+  compare('rpm', 'RPM'),
+].join('\n');
+} else {
+  dailyComparison = 'Taqqoslash uchun kamida 2 kunlik ma’lumot kerak.';
+    }
+    
      setState(() {
        dailyData = result;
        loading = false;
@@ -1840,7 +1867,32 @@ final List<Map<String, dynamic>> result = [];
               ? const Center(
                   child: Text('Sutkalik ma’lumotlar mavjud emas'),
                 )
-      : ListView.builder(
+      : Column(
+    children: [
+      Card(
+  margin: const EdgeInsets.all(12),
+  child: Padding(
+    padding: const EdgeInsets.all(12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Kecha ↔ Bugun taqqoslash',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(dailyComparison),
+        
+      ],
+    ),
+  ),
+),
+Expanded(
+  child: ListView.builder(
+    
                   padding: const EdgeInsets.all(12),
                   itemCount: dailyData.length,
                   itemBuilder: (context, index) {
@@ -1853,6 +1905,8 @@ final List<Map<String, dynamic>> result = [];
                           'Kirish bosimi: ${item['inlet_pressure'] ?? '-'}\n'
                           'Kirish T: ${item['inlet_temp'] ?? '-'}\n'
                           'Chiqish bosimi: ${item['outlet_pressure'] ?? '-'}',
+                          'Chiqish temperaturasi: ${item['outlet_temp'] ?? '-'}\n'
+'Gaz sarfi: ${item['gas_flow'] ?? '-'}',
                         ),
                         trailing: Text(
                           'RPM: ${item['rpm'] ?? '-'}',

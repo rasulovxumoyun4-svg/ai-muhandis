@@ -1334,12 +1334,12 @@ Future<void> _saveHourlyData() async {
     'data': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
     'time':
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
-    'inlet_pressure': inletPressureController.text.trim(),
-     'inlet_temp': inletTempController.text.trim(),
-    'outlet_pressure': outletPressureController.text.trim(),
-    'outlet_temp': outletTempController.text.trim(),
-    'gas_flow': gasFlowController.text.trim(),
-    'rpm': rpmControllerTech.text.trim(),
+    'inlet_pressure': double.tryParse(inletPressureController.text.trim()),
+     'inlet_temp': double.tryParse(inletTempController.text.trim()),
+    'outlet_pressure': double.tryParse(outletPressureController.text.trim()),
+    ''outlet_temp': double.tryParse(outletTempController.text.trim()),
+  'gas_flow': double.tryParse(gasFlowController.text.trim()),
+    'rpm': double.tryParse(rpmControllerTech.text.trim()),
   };
 await Supabase.instance.client
     .from('technology_data')

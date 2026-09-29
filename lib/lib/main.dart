@@ -1925,18 +1925,18 @@ class SignalAlarmPage extends StatefulWidget {
 
 class _SignalAlarmPageState extends State<SignalAlarmPage> {
   final signalController = TextEditingController();
-  final timeController = TextEditingController();
+  
 
   final List<Map<String, String>> signals = [];
 
   void addSignal() {
     final signal = signalController.text.trim();
-    final time = timeController.text.trim();
+    
 
-    if (signal.isEmpty || time.isEmpty) {
+    if (signal.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Signal va vaqtni kiriting'),
+          content: Text('Signalni kiriting'),
         ),
       );
       return;
@@ -1945,22 +1945,20 @@ class _SignalAlarmPageState extends State<SignalAlarmPage> {
     setState(() {
       signals.add({
         'signal': signal,
-        'time': time,
+        
       });
 
-      signals.sort(
-        (a, b) => (a['time'] ?? '').compareTo(b['time'] ?? ''),
-      );
+    
     });
 
     signalController.clear();
-    timeController.clear();
+    
   }
 
   @override
   void dispose() {
     signalController.dispose();
-    timeController.dispose();
+    
     super.dispose();
   }
 
@@ -1985,14 +1983,7 @@ class _SignalAlarmPageState extends State<SignalAlarmPage> {
 
             const SizedBox(height: 12),
 
-            TextField(
-              controller: timeController,
-              decoration: const InputDecoration(
-                labelText: 'Signal vaqti',
-                hintText: 'Masalan: 14:25:32',
-                border: OutlineInputBorder(),
-              ),
-            ),
+
 
             const SizedBox(height: 12),
 
@@ -2040,9 +2031,7 @@ class _SignalAlarmPageState extends State<SignalAlarmPage> {
                             title: Text(
                               item['signal'] ?? '',
                             ),
-                            subtitle: Text(
-                              'Vaqt: ${item['time'] ?? ''}',
-                            ),
+                            
                           ),
                         );
                       },

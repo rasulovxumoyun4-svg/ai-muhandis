@@ -1928,7 +1928,19 @@ class _SignalAlarmPageState extends State<SignalAlarmPage> {
   
 
   final List<Map<String, String>> signals = [];
+Uint8List? alarmImageBytes;
+  Future<void> pickAlarmImage() async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.image,
+    withData: true,
+  );
 
+  if (result != null && result.files.single.bytes != null) {
+    setState(() {
+      alarmImageBytes = result.files.single.bytes;
+    });
+  }
+  }
   void addSignal() {
     final signal = signalController.text.trim();
     

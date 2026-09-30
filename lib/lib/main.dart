@@ -1884,7 +1884,13 @@ final List<Map<String, dynamic>> result = [];
   final y = value(yesterday, key);
   final diff = t - y;
 
-  return '$name: kecha $y, bugun $t, farq ${diff.toStringAsFixed(2)}';
+  final holat = diff > 0
+    ? 'oshgan'
+    : diff < 0
+        ? 'pasaygan'
+        : 'o‘zgarmagan';
+
+return '$name: kecha $y, bugun $t, farq ${diff.abs().toStringAsFixed(2)} — $holat';
 }
       dailyComparison = [
   compare('inlet_pressure', 'Kirish bosimi'),

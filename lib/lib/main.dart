@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 class AppSession {
   static String role = 'operator';
 
@@ -1919,6 +1921,43 @@ rpmController.clear();
 
   await loadDailyData();
   }
+  Future<void> exportDailyPdf() async {
+  final pdf = pw.Document();
+
+  pdf.addPage(
+    pw.MultiPage(
+      build: (context) => [
+        pw.Text(
+          'AI Muhandis - Sutkalik monitoring',
+          style: pw.TextStyle(
+            fontSize: 20,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+        pw.SizedBox(height: 15),
+        ...dailyData.map(
+          (item) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('Sana: ${item['date'] ?? '-'}'),
+              pw.Text('Kirish bosimi: ${item['inlet_pressure'] ?? '-'}'),
+              pw.Text('Kirish temperaturasi: ${item['inlet_temp'] ?? '-'}'),
+              pw.Text('Chiqish bosimi: ${item['outlet_pressure'] ?? '-'}'),
+              pw.Text('Chiqish temperaturasi: ${item['outlet_temp'] ?? '-'}'),
+              pw.Text('Gaz sarfi: ${item['gas_flow'] ?? '-'}'),
+              pw.Text('RPM: ${item['rpm'] ?? '-'}'),
+              pw.SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
+  await Printing.layoutPdf(
+    onLayout: (format) async => pdf.save(),
+  );
+  }
   Future<void> deleteAllTechnologyData() async {
   if (AppSession.role != 'super_admin') return;
 
@@ -2037,7 +2076,12 @@ Card(
         ),
         const SizedBox(height: 8),
         Text(dailyComparison),
-      ],
+   const SizedBox(height: 12),
+ElevatedButton.icon(
+  onPressed: exportDailyPdf,
+  icon: const Icon(Icons.picture_as_pdf),
+  label: const Text('PDF CHIQARISH'),
+),   ],
     ),
   ),
 ),

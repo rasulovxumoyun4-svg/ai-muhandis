@@ -203,8 +203,8 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
             icon: Icons.description,
-            title: 'Texnik hujjatlar',
-            subtitle: 'Pasport, sxema va reglament',
+            title: 'Uskunalar va hujjatlar',
+            subtitle: 'Uskunalar,pasport, sxema va reglament',
             page: const PdfUploadPage(),
             ),
 if (AppSession.role == 'super_admin' || AppSession.role == 'admin')

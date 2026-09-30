@@ -2161,13 +2161,7 @@ SizedBox(
             'Chiqish temperaturasi: ${item['outlet_temp'] ?? '-'}\n'
             'Gaz sarfi: ${item['gas_flow'] ?? '-'}',
           ),
-          trailing: AppSession.role == 'super_admin'
-    ? IconButton(
-        icon: const Icon(Icons.delete, color: Colors.red),
-        onPressed: () async {
-          await deleteDay(item['date'].toString());
-        },
-      )
+          
           trailing: AppSession.role == 'super_admin'
     ? IconButton(
         icon: const Icon(Icons.delete, color: Colors.red),

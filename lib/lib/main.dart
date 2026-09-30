@@ -2007,7 +2007,7 @@ rpmController.clear();
               ? const Center(
                   child: Text('Sutkalik ma’lumotlar mavjud emas'),
                 )
-      : Column(
+      : ListView (
     children: [
       if (AppSession.role == 'admin' ||
     AppSession.role == 'super_admin')
@@ -2122,7 +2122,8 @@ ElevatedButton.icon(
     ),
   ),
 ),
-Flexible(
+SizedBox(
+  height: 400,
   child: ListView.builder(
     padding: const EdgeInsets.all(12),
     itemCount: dailyData.length,

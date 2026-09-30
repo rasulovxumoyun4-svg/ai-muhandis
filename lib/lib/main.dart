@@ -2122,7 +2122,7 @@ ElevatedButton.icon(
     ),
   ),
 ),
-Expanded(
+Flexible(
   child: ListView.builder(
     padding: const EdgeInsets.all(12),
     itemCount: dailyData.length,

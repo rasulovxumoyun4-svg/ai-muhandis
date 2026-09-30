@@ -1903,6 +1903,33 @@ final List<Map<String, dynamic>> result = [];
        loading = false;
      });
   }
+  double _avgForDay(String key) {
+  if (dailyData.isEmpty) return 0;
+
+  final values = dailyData
+      .map((e) => double.tryParse(e[key]?.toString() ?? ''))
+      .whereType<double>()
+      .toList();
+
+  if (values.isEmpty) return 0;
+
+  return values.reduce((a, b) => a + b) / values.length;
+  }
+  String get dailySummary {
+  if (dailyData.isEmpty) {
+    return 'Bugungi ma’lumotlar hali kiritilmagan.';
+  }
+
+  return '''
+SUTKALIK O‘RTACHA:
+Kirish bosimi: ${_avgForDay('inlet_pressure').toStringAsFixed(2)}
+Kirish temperaturasi: ${_avgForDay('inlet_temp').toStringAsFixed(2)}
+Chiqish bosimi: ${_avgForDay('outlet_pressure').toStringAsFixed(2)}
+Chiqish temperaturasi: ${_avgForDay('outlet_temp').toStringAsFixed(2)}
+Gaz sarfi: ${_avgForDay('gas_flow').toStringAsFixed(2)}
+RPM: ${_avgForDay('rpm').toStringAsFixed(0)}
+''';
+  }
   Future<void> saveTechnologyData() async {
   await Supabase.instance.client.from('technology_data').insert({
     'inlet_pressure': inletPressureController.text.trim(),
@@ -2076,6 +2103,16 @@ Card(
         ),
         const SizedBox(height: 8),
         Text(dailyComparison),
+        const SizedBox(height: 16),
+const Text(
+  'Sutkalik natija',
+  style: TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  ),
+),
+const SizedBox(height: 8),
+Text(dailySummary),
    const SizedBox(height: 12),
 ElevatedButton.icon(
   onPressed: exportDailyPdf,

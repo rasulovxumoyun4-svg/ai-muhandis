@@ -1958,6 +1958,16 @@ rpmController.clear();
 
   await loadDailyData();
   }
+  Future<void> deleteDay(String date) async {
+  await Supabase.instance.client
+      .from('technology_data')
+      .delete()
+      .gte('created_at', '${date}T00:00:00')
+      .lt('created_at',
+          '${DateTime.parse(date).add(const Duration(days: 1)).toIso8601String()}');
+
+  await loadDailyData();
+  }
   Future<void> exportDailyPdf() async {
   final pdf = pw.Document();
 
@@ -2151,9 +2161,44 @@ SizedBox(
             'Chiqish temperaturasi: ${item['outlet_temp'] ?? '-'}\n'
             'Gaz sarfi: ${item['gas_flow'] ?? '-'}',
           ),
-          trailing: Text(
-            'RPM: ${item['rpm'] ?? '-'}',
-          ),
+          trailing: AppSession.role == 'super_admin'
+    ? IconButton(
+        icon: const Icon(Icons.delete, color: Colors.red),
+        onPressed: () async {
+          await deleteDay(item['date'].toString());
+        },
+      )
+          trailing: AppSession.role == 'super_admin'
+    ? IconButton(
+        icon: const Icon(Icons.delete, color: Colors.red),
+        onPressed: () async {
+  final tasdiq = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('O‘chirish'),
+      content: const Text(
+        'Bu kunning barcha ma’lumotlarini o‘chirasizmi?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('BEKOR QILISH'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('O‘CHIRISH'),
+        ),
+      ],
+    ),
+  );
+
+  if (tasdiq == true) {
+    await deleteDay(item['date'].toString());
+  }
+},
+      )
+    
+    : Text('RPM: ${item['rpm'] ?? '-'}'),
         ),
       );
     },

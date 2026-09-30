@@ -205,7 +205,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             icon: Icons.description,
             title: 'Uskunalar va hujjatlar',
             subtitle: 'Uskunalar,pasport, sxema va reglament',
-            page: const PdfUploadPage(),
+            page: const EquipmentDocumentsPage(),
             ),
 if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
@@ -227,14 +227,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             subtitle: 'Oldingi nosozlik va taʼmirlar',
             page: const HistoryPage(),
           ),
-          if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
-          menuCard(
-  context,
-  icon: Icons.storage,
-  title: 'Uskunalar bazasi',
-  subtitle: 'Supabase bazasidagi uskunalar',
-  page: const EquipmentPage(),
-),
+          
 
           menuCard(
             context,
@@ -1106,7 +1099,7 @@ await Supabase.instance.client
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Texnik hujjatlar'),
+        title: const Text('Uskunalar va hujjatlar'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -1181,6 +1174,57 @@ await Supabase.instance.client
                 'tarjima qiladi, tegishli sahifa va sxemani topadi '
                 'hamda hujjatga tayangan holda sabab va tavsiyani ko‘rsatadi.',
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EquipmentDocumentsPage extends StatelessWidget {
+  const EquipmentDocumentsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Uskunalar va hujjatlar'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.precision_manufacturing),
+              title: const Text('Uskunalar'),
+              subtitle: const Text('Uskunalar bazasini ko‘rish'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const EquipmentPage(),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.picture_as_pdf),
+              title: const Text('Texnik hujjatlar'),
+              subtitle: const Text('Pasport, sxema va reglamentlar'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const PdfUploadPage(),
+                  ),
+                );
+              },
             ),
           ),
         ],

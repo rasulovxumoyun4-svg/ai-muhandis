@@ -1925,7 +1925,11 @@ return '$name: kecha $y, bugun $t, farq ${diff.abs().toStringAsFixed(2)} — $ho
   if (dailyData.isEmpty) {
     return 'Bugungi ma’lumotlar hali kiritilmagan.';
   }
+String xulosa = '';
 
+if (dailyComparison.isNotEmpty) {
+  xulosa = '\n\nKUNLIK XULOSA:\n$dailyComparison';
+}
   return '''
 SUTKALIK O‘RTACHA:
 Kirish bosimi: ${_avgForDay('inlet_pressure').toStringAsFixed(2)}
@@ -1933,7 +1937,7 @@ Kirish temperaturasi: ${_avgForDay('inlet_temp').toStringAsFixed(2)}
 Chiqish bosimi: ${_avgForDay('outlet_pressure').toStringAsFixed(2)}
 Chiqish temperaturasi: ${_avgForDay('outlet_temp').toStringAsFixed(2)}
 Gaz sarfi: ${_avgForDay('gas_flow').toStringAsFixed(2)}
-RPM: ${_avgForDay('rpm').toStringAsFixed(0)}
+RPM: ${_avgForDay('rpm').toStringAsFixed(0)} $xulosa
 ''';
   }
   Future<void> saveTechnologyData() async {

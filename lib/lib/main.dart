@@ -1613,7 +1613,38 @@ const SizedBox(height: 10),
             Text('Chiqish temperaturasi: ${item['outlet_temp']}'),
             Text('Gaz sarfi: ${item['gas_flow']}'),
             Text('RPM / oborot: ${item['rpm']}'),
-          ],
+      if (AppSession.role == 'super_admin')
+  IconButton(
+    icon: const Icon(Icons.delete, color: Colors.red),
+    onPressed: () async {
+  final tasdiq = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("O'chirish"),
+      content: const Text("Bu soatlik ma'lumotni o'chirasizmi?"),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text("BEKOR QILISH"),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text("O'CHIRISH"),
+        ),
+      ],
+    ),
+  );
+
+  if (tasdiq == true) {
+    await Supabase.instance.client
+        .from('technology_data')
+        .delete()
+        .eq('id', item['id']);
+
+    await loadData();
+  }
+},
+  ),    ],
         ),
       ),
     ),
@@ -1959,12 +1990,23 @@ rpmController.clear();
   await loadDailyData();
   }
   Future<void> deleteDay(String date) async {
-  await Supabase.instance.client
+  final rows = await Supabase.instance.client
       .from('technology_data')
-      .delete()
-      .gte('created_at', '${date}T00:00:00')
-      .lt('created_at',
-          '${DateTime.parse(date).add(const Duration(days: 1)).toIso8601String()}');
+      .select('id, created_at');
+
+  for (final row in rows) {
+    final createdAt = DateTime.parse(row['created_at']).toLocal();
+
+    final rowDate =
+        '${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')}';
+
+    if (rowDate == date) {
+      await Supabase.instance.client
+          .from('technology_data')
+          .delete()
+          .eq('id', row['id']);
+    }
+  }
 
   await loadDailyData();
   }

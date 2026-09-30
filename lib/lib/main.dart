@@ -1910,6 +1910,22 @@ final List<Map<String, dynamic>> result = [];
     'gas_flow': gasFlowController.text.trim(),
     'rpm': rpmController.text.trim(),
   });
+    inletPressureController.clear();
+inletTemperatureController.clear();
+outletPressureController.clear();
+outletTemperatureController.clear();
+gasFlowController.clear();
+rpmController.clear();
+
+  await loadDailyData();
+  }
+  Future<void> deleteAllTechnologyData() async {
+  if (AppSession.role != 'super_admin') return;
+
+  await Supabase.instance.client
+      .from('technology_data')
+      .delete()
+      .neq('id', 0);
 
   await loadDailyData();
   }
@@ -1995,7 +2011,13 @@ final List<Map<String, dynamic>> result = [];
             onPressed: saveTechnologyData,
             child: const Text('SAQLASH'),
           ),
-        ],
+    if (AppSession.role == 'super_admin') ...[
+  const SizedBox(height: 8),
+  ElevatedButton(
+    onPressed: deleteAllTechnologyData,
+    child: const Text('BARCHASINI O‘CHIRISH'),
+  ),
+],    ],
       ),
     ),
   ),

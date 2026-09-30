@@ -1824,6 +1824,12 @@ class _MonitoringPageState extends State<MonitoringPage> {
   List<Map<String, dynamic>> dailyData = [];
   bool loading = true;
   String dailyComparison = '';
+  final inletPressureController = TextEditingController();
+final inletTemperatureController = TextEditingController();
+final outletPressureController = TextEditingController();
+final outletTemperatureController = TextEditingController();
+final gasFlowController = TextEditingController();
+final rpmController = TextEditingController();
 
   @override
   void initState() {
@@ -1895,6 +1901,18 @@ final List<Map<String, dynamic>> result = [];
        loading = false;
      });
   }
+  Future<void> saveTechnologyData() async {
+  await Supabase.instance.client.from('technology_data').insert({
+    'inlet_pressure': inletPressureController.text.trim(),
+    'inlet_temp': inletTemperatureController.text.trim(),
+    'outlet_pressure': outletPressureController.text.trim(),
+    'outlet_temp': outletTemperatureController.text.trim(),
+    'gas_flow': gasFlowController.text.trim(),
+    'rpm': rpmController.text.trim(),
+  });
+
+  await loadDailyData();
+  }
 @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1909,6 +1927,78 @@ final List<Map<String, dynamic>> result = [];
                 )
       : Column(
     children: [
+      if (AppSession.role == 'admin' ||
+    AppSession.role == 'super_admin')
+  Card(
+    margin: const EdgeInsets.all(12),
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          const Text(
+            'Texnologik parametrlarni kiritish',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: inletPressureController,
+            decoration: const InputDecoration(
+              labelText: 'Kirish bosimi',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: inletTemperatureController,
+            decoration: const InputDecoration(
+              labelText: 'Kirish temperaturasi',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: outletPressureController,
+            decoration: const InputDecoration(
+              labelText: 'Chiqish bosimi',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: outletTemperatureController,
+            decoration: const InputDecoration(
+              labelText: 'Chiqish temperaturasi',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: gasFlowController,
+            decoration: const InputDecoration(
+              labelText: 'Gaz sarfi',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: rpmController,
+            decoration: const InputDecoration(
+              labelText: 'RPM / oborot',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: saveTechnologyData,
+            child: const Text('SAQLASH'),
+          ),
+        ],
+      ),
+    ),
+  ),
 Card(
   margin: const EdgeInsets.all(12),
   child: Padding(

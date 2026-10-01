@@ -1417,20 +1417,43 @@ await Supabase.instance.client
 }
   @override
   Widget build(BuildContext context) {
-    final todayData = _dataForDate(DateTime.now());
+final todayData = _dataForDate(DateTime.now());
 final yesterdayData =
     _dataForDate(DateTime.now().subtract(const Duration(days: 1)));
-    final today = todayData.isNotEmpty ? todayData.first : null;
-final yesterday = yesterdayData.isNotEmpty ? yesterdayData.first : null;
-    String dailySummary = '';
 
-if (today != null && yesterday != null) {
+Map<String, double> averageData(List<Map<String, dynamic>> data) {
+  double avg(String key) {
+    if (data.isEmpty) return 0;
+    final total =
+        data.fold<double>(0, (sum, item) => sum + _toDouble(item[key]));
+    return total / data.length;
+  }
+
+  return {
+    'inlet_pressure': avg('inlet_pressure'),
+    'inlet_temp': avg('inlet_temp'),
+    'outlet_pressure': avg('outlet_pressure'),
+    'outlet_temp': avg('outlet_temp'),
+    'gas_flow': avg('gas_flow'),
+    'rpm': avg('rpm'),
+  };
+}
+
+String dailySummary = '';
+
+if (todayData.isNotEmpty && yesterdayData.isNotEmpty) {
+  final today = averageData(todayData);
+  final yesterday = averageData(yesterdayData);
+
   dailySummary = [
-    
-    _compareValue('Kirish bosimi', today['inlet_pressure'], yesterday['inlet_pressure']),
-    _compareValue('Kirish temperaturasi', today['inlet_temp'], yesterday['inlet_temp']),
-    _compareValue('Chiqish bosimi', today['outlet_pressure'], yesterday['outlet_pressure']),
-    _compareValue('Chiqish temperaturasi', today['outlet_temp'], yesterday['outlet_temp']),
+    _compareValue(
+        'Kirish bosimi', today['inlet_pressure'], yesterday['inlet_pressure']),
+    _compareValue(
+        'Kirish temperaturasi', today['inlet_temp'], yesterday['inlet_temp']),
+    _compareValue(
+        'Chiqish bosimi', today['outlet_pressure'], yesterday['outlet_pressure']),
+    _compareValue(
+        'Chiqish temperaturasi', today['outlet_temp'], yesterday['outlet_temp']),
     _compareValue('Gaz sarfi', today['gas_flow'], yesterday['gas_flow']),
     _compareValue('RPM', today['rpm'], yesterday['rpm']),
   ].join('\n');

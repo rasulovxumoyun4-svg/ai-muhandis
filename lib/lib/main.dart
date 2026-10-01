@@ -1343,6 +1343,12 @@ void initState() {
   _loadTechnologyData();
 }
   Future<void> _loadTechnologyData() async {
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
+
+await Supabase.instance.client
+    .from('technology_data')
+    .delete()
+    .lt('created_at', cutoff.toIso8601String());
   final rows = await Supabase.instance.client
       .from('technology_data')
       .select()
@@ -1443,6 +1449,45 @@ await Supabase.instance.client
     hourlyData.clear();
   });
 }
+  Future<void> deleteDay(String date) async {
+  await Supabase.instance.client
+      .from('technology_data')
+      .delete()
+      .eq('data', date);
+
+  await _loadTechnologyData();
+  }
+  Future<void> exportDailyPdf() async {
+  final pdf = pw.Document();
+  final todayData = _dataForDate(DateTime.now());
+
+  pdf.addPage(
+    pw.MultiPage(
+      build: (context) => [
+        pw.Text('AI Muhandis - Sutkalik hisobot'),
+        pw.SizedBox(height: 10),
+        pw.Text('Sutkalik natija:'),
+        pw.Text(dailySummary),
+        pw.SizedBox(height: 10),
+        ...todayData.map(
+          (item) => pw.Text(
+            '${item['time']} | '
+            'Kirish bosimi: ${item['inlet_pressure']} | '
+            'Kirish T: ${item['inlet_temp']} | '
+            'Chiqish bosimi: ${item['outlet_pressure']} | '
+            'Chiqish T: ${item['outlet_temp']} | '
+            'Gaz sarfi: ${item['gas_flow']} | '
+            'RPM: ${item['rpm']}',
+          ),
+        ),
+      ],
+    ),
+  );
+
+  await Printing.layoutPdf(
+    onLayout: (format) async => pdf.save(),
+  );
+  }
   @override
   Widget build(BuildContext context) {
 final todayData = _dataForDate(DateTime.now());
@@ -2162,7 +2207,11 @@ Card(
           ),
         ),
         const SizedBox(height: 8),
-        Text(dailyComparison),
+        Text(
+  dailyComparison.isEmpty
+      ? 'Kecha bilan solishtirish uchun yetarli ma’lumot yo‘q.'
+      : dailyComparison,
+),
         const SizedBox(height: 16),
 const Text(
   'Sutkalik natija',
@@ -2172,7 +2221,11 @@ const Text(
   ),
 ),
 const SizedBox(height: 8),
-Text(dailySummary),
+Text(
+  dailySummary.isEmpty
+      ? 'Sutkalik natija uchun bugun va kecha ma’lumotlari kerak.'
+      : dailySummary,
+),
    const SizedBox(height: 12),
 ElevatedButton.icon(
   onPressed: exportDailyPdf,
@@ -2186,9 +2239,9 @@ SizedBox(
   height: 400,
   child: ListView.builder(
     padding: const EdgeInsets.all(12),
-    itemCount: dailyData.length,
+    itemCount: hourlyData.length,
     itemBuilder: (context, index) {
-      final item = dailyData[index];
+    final item = hourlyData[index];
 
       return Card(
         child: ListTile(

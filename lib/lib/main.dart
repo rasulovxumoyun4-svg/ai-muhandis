@@ -1444,17 +1444,7 @@ if (today != null && yesterday != null) {
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (dailySummary.isNotEmpty) ...[
-  Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Text(
-        'Kunlik diagnostika:\n$dailySummary',
-      ),
-    ),
-  ),
-  const SizedBox(height: 12),
-],
+      
     
       TextField(
         controller: inletPressureController,
@@ -1600,6 +1590,17 @@ const SizedBox(height: 10),
   }
 },
   ),    ],
+          if (dailySummary.isNotEmpty) ...[
+  Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Text(
+        'Kunlik diagnostika:\n$dailySummary',
+      ),
+    ),
+  ),
+  const SizedBox(height: 12),
+],
         ),
       ),
     ),

@@ -996,7 +996,7 @@ withData: true,
             safeName,
             file.bytes!,
             fileOptions: const FileOptions(
-              contentType: 'application/pdf',
+              
               upsert: false,
             ),
           );

@@ -158,13 +158,7 @@ class HomePage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          menuCard(
-            context,
-            icon: Icons.psychology,
-            title: 'AI Diagnostika',
-            subtitle: 'Nosozlikni aniqlash va tahlil qilish',
-            page: const DiagnosticPage()
-            ),
+        
           if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
  menuCard(
   context,
@@ -181,26 +175,7 @@ menuCard(
   subtitle: 'Soatlik parametrlar va sutkalik tahlil',
   page: const TechnologyPage(),
 ),         
-if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
-          menuCard(
-            context,
-            icon: Icons.warning_amber,
-            title: 'Signal va Alarm',
-            subtitle: 'Alarm va Trip tahlili',
-          page: const SignalAlarmPage(),
-            ),
-if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
-          menuCard(
-            context,
-            icon: Icons.show_chart,
-            title: 'SCADA / Trend',
-            subtitle: 'SCADA va trend tahlili',
-            page: const InfoPage(
-              title: 'SCADA / Trend',
-              description:
-                  'SCADA ekranlari va trend maʼlumotlarini tahlil qilish bo‘limi.',
-            ),
-          ),
+
 if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
@@ -209,14 +184,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             subtitle: 'Uskunalar,pasport, sxema va reglament',
             page: const EquipmentDocumentsPage(),
             ),
-if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
-          menuCard(
-            context,
-            icon: Icons.cable,
-            title: 'Signal zanjiri',
-            subtitle: 'Datchikdan PLC gacha',
-            page: const SignalChainPage(),
-          ),
+
           if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
             context,
@@ -225,15 +193,6 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             subtitle: 'Oldingi nosozlik va taʼmirlar',
             page: const HistoryPage(),
           ),
-          
-
-          menuCard(
-            context,
-            icon: Icons.monitor_heart,
-            title: 'Sutkalik monitoring',
-            subtitle: 'Asosiy parametrlarni nazorat qilish',
-             page:  MonitoringPage(),
-          ), 
 
           const Divider(height: 32),
 if (AppSession.role == 'super_admin' || AppSession.role == 'admin')

@@ -215,11 +215,7 @@ if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
             icon: Icons.cable,
             title: 'Signal zanjiri',
             subtitle: 'Datchikdan PLC gacha',
-            page: const InfoPage(
-              title: 'Signal zanjiri',
-              description:
-                  'Datchik → JB → kabel → terminal → marshalling → PLC → SCADA.',
-            ),
+            page: const SignalChainPage(),
           ),
           if (AppSession.role == 'super_admin' || AppSession.role == 'admin')
           menuCard(
@@ -2380,6 +2376,70 @@ Uint8List? alarmImageBytes;
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+class SignalChainPage extends StatefulWidget {
+  const SignalChainPage({super.key});
+
+  @override
+  State<SignalChainPage> createState() => _SignalChainPageState();
+}
+
+class _SignalChainPageState extends State<SignalChainPage> {
+  final tagController = TextEditingController();
+
+  @override
+  void dispose() {
+    tagController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Signal zanjiri'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            controller: tagController,
+            decoration: const InputDecoration(
+              labelText: 'Signal TAG raqami',
+              hintText: 'Masalan: PT-101',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Signal yo‘nalishi',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Text('1. Datchik'),
+                  Text('2. JB (Junction Box)'),
+                  Text('3. Kabel'),
+                  Text('4. Terminal'),
+                  Text('5. Marshalling'),
+                  Text('6. PLC / I/O'),
+                  Text('7. SCADA'),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

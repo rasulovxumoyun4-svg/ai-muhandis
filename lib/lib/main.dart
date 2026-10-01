@@ -1379,6 +1379,22 @@ String _compareValue(String name, dynamic today, dynamic yesterday) {
   }
   return '$name kechagi bilan bir xil';
 }
+  String _hourlyDiagnosis(Map<String, dynamic> current) {
+  if (hourlyData.length < 2) {
+    return 'Oldingi soat ma’lumoti yo‘q. Solishtirish uchun kamida 2 ta soatlik ma’lumot kerak.';
+  }
+
+  final previous = hourlyData[1];
+
+  return [
+    _compareValue('Kirish bosimi', current['inlet_pressure'], previous['inlet_pressure']),
+    _compareValue('Kirish temperaturasi', current['inlet_temp'], previous['inlet_temp']),
+    _compareValue('Chiqish bosimi', current['outlet_pressure'], previous['outlet_pressure']),
+    _compareValue('Chiqish temperaturasi', current['outlet_temp'], previous['outlet_temp']),
+    _compareValue('Gaz sarfi', current['gas_flow'], previous['gas_flow']),
+    _compareValue('RPM', current['rpm'], previous['rpm']),
+  ].join('\n');
+  }
 Future<void> _saveHourlyData() async {
   final now = DateTime.now();
   final data = {
@@ -1403,7 +1419,19 @@ await Supabase.instance.client
   outletTempController.clear();
   gasFlowController.clear();
   rpmControllerTech.clear();
-}
+
+  if (hourlyData.isNotEmpty) {
+  final diagnosis = _hourlyDiagnosis(hourlyData.first);
+
+  if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Soatlik diagnostika:\n$diagnosis'),
+        duration: const Duration(seconds: 8),
+      ),
+    );
+  }
+  }
   Future<void> deleteAllTechnologyData() async {
 await Supabase.instance.client
     .from('technology_data')

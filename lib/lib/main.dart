@@ -1608,6 +1608,7 @@ const SizedBox(height: 10),
         .from('technology_data')
         .delete()
         .eq('id', item['id']);
+    await _loadTechnologyData();
 
   
   }

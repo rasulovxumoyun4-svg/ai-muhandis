@@ -1641,7 +1641,7 @@ const SizedBox(height: 10),
         .delete()
         .eq('id', item['id']);
 
-    await loadDailyData();
+  
   }
 },
   ),    ],

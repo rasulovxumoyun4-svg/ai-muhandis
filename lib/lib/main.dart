@@ -1590,17 +1590,7 @@ const SizedBox(height: 10),
   }
 },
   ),    ],
-          if (dailySummary.isNotEmpty) ...[
-  Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Text(
-        'Kunlik diagnostika:\n$dailySummary',
-      ),
-    ),
-  ),
-  const SizedBox(height: 12),
-],
+
         ),
       ),
     ),

@@ -2853,10 +2853,10 @@ FilledButton.icon(
     saving ? 'SAQLANMOQDA...' : 'ISH YAKUNINI SAQLASH',
   ),
 ),
-            
-          
-        
-      
+  ],          
+    ),
+),
+     
     );
   }
 }

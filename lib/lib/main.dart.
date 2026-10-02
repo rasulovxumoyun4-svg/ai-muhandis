@@ -2838,10 +2838,29 @@ TextField(
           ),
 
           const SizedBox(height: 20),
-
-          FilledButton.icon(
-            onPressed: saving ? null : _saveWorkResult,
-            icon:
+FilledButton.icon(
+  onPressed: saving ? null : _saveWorkResult,
+  icon: saving
+      ? const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+          ),
+        )
+      : const Icon(Icons.save),
+  label: Text(
+    saving ? 'SAQLANMOQDA...' : 'ISH YAKUNINI SAQLASH',
+  ),
+),
+            
+          
+        
+      
+    );
+  }
+}
+        
 
 class ManagerPage extends StatefulWidget {
   const ManagerPage({super.key});

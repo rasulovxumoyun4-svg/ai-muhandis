@@ -71,7 +71,7 @@ Future<void> main() async {
     anonKey:
         'sb_publishable_sWBh1iSIFp9e7TC0eGF4tA_lhXL3iZ9',
   );
-
+await loadDeviceIdentity();
   runApp(const AiMuhandisApp());
 }
 
@@ -801,12 +801,18 @@ class _TechnologyPageState extends State<TechnologyPage> {
           .subtract(const Duration(days: 30))
           .toIso8601String();
 
-      final response = await supabase
-          .from('technology_data')
-          .select()
-          .gte('created_at', cutoff)
-          .order('created_at', ascending: false);
-// TODO: field_id bo'yicha kon ma'lumotlarini ajratish
+      var query = supabase
+    .from('technology_data')
+    .select()
+    .gte('created_at', cutoff);
+
+if (AppSession.fieldName != null &&
+    AppSession.fieldName!.isNotEmpty) {
+  query = query.eq('field_name', AppSession.fieldName!);
+}
+
+final response =
+    await query.order('created_at', ascending: false);
       final rows = List<Map<String, dynamic>>.from(response);
 
       if (!mounted) return;
@@ -996,15 +1002,19 @@ Future<void> _saveHourlyData() async {
       final now = DateTime.now();
 
       await supabase.from('technology_data').insert({
-        'data': _dateText(now),
-        'time': _timeText(now),
-        'inlet_pressure': inletPressure,
-        'inlet_temp': inletTemp,
-        'outlet_pressure': outletPressure,
-        'outlet_temp': outletTemp,
-        'gas_flow': gasFlow,
-        'rpm': rpm,
-      });
+
+  'field_name': AppSession.fieldName ?? '',
+  'device_id': AppSession.deviceId ?? '',
+  'date': _dateText(now),
+  'time': _timeText(now),
+  'inlet_pressure': inletPressure,
+  'inlet_temp': inletTemp,
+  'outlet_pressure': outletPressure,
+  'outlet_temp': outletTemp,
+  'gas_flow': gasFlow,
+  'rpm': rpm,
+});
+    
 
       inletPressureController.clear();
       inletTempController.clear();

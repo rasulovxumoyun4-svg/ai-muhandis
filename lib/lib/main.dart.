@@ -71,10 +71,27 @@ class AccessPage extends StatefulWidget {
 class _AccessPageState extends State<AccessPage> {
   final TextEditingController codeController =
       TextEditingController();
+@override
+void initState() {
+  super.initState();
+  _loadSavedCode();
+}
 
-  void _openHome(String role) {
+Future<void> _loadSavedCode() async {
+  final prefs = await SharedPreferences.getInstance();
+  final savedCode = prefs.getString('access_code');
+
+  if (savedCode != null && mounted) {
+    setState(() {
+      codeController.text = savedCode;
+    });
+  }
+}
+
+  Future<void> _openHome(String role) async {
     AppSession.role = role;
-
+final prefs = await SharedPreferences.getInstance();
+await prefs.setString('access_code', codeController.text.trim());
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(

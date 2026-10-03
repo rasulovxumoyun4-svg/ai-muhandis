@@ -11,7 +11,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AppSession {
   static String role = 'operator';
-
+static String? fieldId;
+static String? fieldName;
+static String? deviceId;
   static bool get isSuperAdmin => role == 'super_admin';
   static bool get isAdmin =>
       role == 'admin' || role == 'super_admin';
@@ -28,7 +30,39 @@ class AppSession {
     }
   }
 }
+ Future<void> loadDeviceIdentity() async {
+  final prefs = await SharedPreferences.getInstance();
 
+  String? deviceId = prefs.getString('device_id');
+
+  if (deviceId == null || deviceId.isEmpty) {
+    deviceId = 'DEV-${DateTime.now().millisecondsSinceEpoch}';
+    await prefs.setString('device_id', deviceId);
+  }
+
+  AppSession.deviceId = deviceId;
+
+  try {
+    final response = await Supabase.instance.client
+        .from('device_assignments')
+        .select('field_name')
+        .eq('device_id', deviceId)
+        .maybeSingle();
+
+    if (response != null) {
+      final fieldName = response['field_name']?.toString();
+
+      if (fieldName != null && fieldName.isNotEmpty) {
+        AppSession.fieldName = fieldName;
+        await prefs.setString('field_name', fieldName);
+      }
+    } else {
+      AppSession.fieldName = prefs.getString('field_name');
+    }
+  } catch (_) {
+    AppSession.fieldName = prefs.getString('field_name');
+  }
+}
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -772,7 +806,7 @@ class _TechnologyPageState extends State<TechnologyPage> {
           .select()
           .gte('created_at', cutoff)
           .order('created_at', ascending: false);
-
+// TODO: field_id bo'yicha kon ma'lumotlarini ajratish
       final rows = List<Map<String, dynamic>>.from(response);
 
       if (!mounted) return;

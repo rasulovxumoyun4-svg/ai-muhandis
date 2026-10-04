@@ -131,6 +131,7 @@ if (savedFieldId != null && mounted) {
 
   Future<void> _openHome(String role) async {
     AppSession.role = role;
+AppSession.fieldId = fieldIdController.text.trim();
 final prefs = await SharedPreferences.getInstance();
 await prefs.setString('access_code', codeController.text.trim());
 await prefs.setString(
@@ -159,7 +160,7 @@ if (code != '001' && fieldId.isEmpty) {
 if (code != '001') {
   final field = await Supabase.instance.client
       .from('device_assignments')
-      .select('field_id')
+      .select('field_id, field_name')
       .eq('field_id', fieldId)
       .maybeSingle();
 
@@ -172,6 +173,7 @@ if (code != '001') {
     );
     return;
   }
+AppSession.fieldName = field['field_name']?.toString();
 }
 
     if (code == '001') {
@@ -204,7 +206,7 @@ Future<void> _loginAsOperator() async {
 
   final field = await Supabase.instance.client
       .from('device_assignments')
-      .select('field_id')
+    .select('field_id, field_name')
       .eq('field_id', fieldId)
       .maybeSingle();
 
@@ -217,15 +219,15 @@ Future<void> _loginAsOperator() async {
     );
     return;
   }
-
+AppSession.fieldName = field['field_name']?.toString();
   await _openHome('operator');
 }
   @override
-  void dispose() {
-    codeController.dispose();
-    super.dispose();
-fieldIdController.dispose();
-  }
+void dispose() {
+  codeController.dispose();
+  fieldIdController.dispose();
+  super.dispose();
+}
 
   @override
   Widget build(BuildContext context) {
@@ -1300,6 +1302,7 @@ Future<void> _saveHourlyData() async {
       await supabase.from('technology_data').insert({
 
   'field_name': AppSession.fieldName ?? '',
+'field_id': AppSession.fieldId ?? '',
   'device_id': AppSession.deviceId ?? '',
   'date': _dateText(now),
   'time': _timeText(now),

@@ -105,6 +105,8 @@ class AccessPage extends StatefulWidget {
 class _AccessPageState extends State<AccessPage> {
   final TextEditingController codeController =
       TextEditingController();
+final TextEditingController fieldIdController =
+    TextEditingController();
 @override
 void initState() {
   super.initState();
@@ -114,18 +116,27 @@ void initState() {
 Future<void> _loadSavedCode() async {
   final prefs = await SharedPreferences.getInstance();
   final savedCode = prefs.getString('access_code');
-
+final savedFieldId = prefs.getString('field_id');
   if (savedCode != null && mounted) {
     setState(() {
       codeController.text = savedCode;
     });
   }
+if (savedFieldId != null && mounted) {
+  setState(() {
+    fieldIdController.text = savedFieldId;
+  });
+}
 }
 
   Future<void> _openHome(String role) async {
     AppSession.role = role;
 final prefs = await SharedPreferences.getInstance();
 await prefs.setString('access_code', codeController.text.trim());
+await prefs.setString(
+  'field_id',
+  fieldIdController.text.trim(),
+);
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -134,8 +145,34 @@ await prefs.setString('access_code', codeController.text.trim());
     );
   }
 
-  void _loginWithCode() {
+Future<void> _loginWithCode() async {
     final code = codeController.text.trim();
+final fieldId = fieldIdController.text.trim();
+if (code != '001' && fieldId.isEmpty) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Kon ID ni kiriting'),
+    ),
+  );
+  return;
+}
+if (code != '001') {
+  final field = await Supabase.instance.client
+      .from('device_assignments')
+      .select('field_id')
+      .eq('field_id', fieldId)
+      .maybeSingle();
+
+  if (field == null) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bunday Kon ID topilmadi'),
+      ),
+    );
+    return;
+  }
+}
 
     if (code == '001') {
       _openHome('super_admin');
@@ -153,11 +190,41 @@ await prefs.setString('access_code', codeController.text.trim());
       ),
     );
   }
+Future<void> _loginAsOperator() async {
+  final fieldId = fieldIdController.text.trim();
 
+  if (fieldId.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Kon ID ni kiriting'),
+      ),
+    );
+    return;
+  }
+
+  final field = await Supabase.instance.client
+      .from('device_assignments')
+      .select('field_id')
+      .eq('field_id', fieldId)
+      .maybeSingle();
+
+  if (field == null) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bunday Kon ID topilmadi'),
+      ),
+    );
+    return;
+  }
+
+  await _openHome('operator');
+}
   @override
   void dispose() {
     codeController.dispose();
     super.dispose();
+fieldIdController.dispose();
   }
 
   @override
@@ -195,6 +262,16 @@ await prefs.setString('access_code', codeController.text.trim());
                 prefixIcon: Icon(Icons.lock),
               ),
             ),
+const SizedBox(height: 15),
+TextField(
+  controller: fieldIdController,
+  keyboardType: TextInputType.number,
+  decoration: const InputDecoration(
+    labelText: 'Kon ID',
+    hintText: 'Masalan: 100',
+    prefixIcon: Icon(Icons.location_on),
+  ),
+),
             const SizedBox(height: 15),
             SizedBox(
               width: double.infinity,
@@ -209,9 +286,9 @@ const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  _openHome('operator');
-                },
+                onPressed: () async {
+  await _loginAsOperator();
+},
                 icon: const Icon(Icons.visibility),
                 label: const Text(
                   'KUZATUVCHI SIFATIDA KIRISH',
@@ -482,6 +559,14 @@ void initState() {
   }
 
   Future<void> _saveAssignment() async {
+if (!AppSession.isSuperAdmin) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Kon va ID ni faqat Super Admin belgilaydi'),
+    ),
+  );
+  return;
+}
     final fieldName = fieldController.text.trim();
     final fieldId = fieldIdController.text.trim();
 

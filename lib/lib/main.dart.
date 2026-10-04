@@ -440,7 +440,7 @@ class _FieldManagementPageState extends State<FieldManagementPage> {
   final supabase = Supabase.instance.client;
 
   final fieldController = TextEditingController();
-  final deviceController = TextEditingController();
+  final fieldIdController = TextEditingController();
 
   bool saving = false;
 List<Map<String, dynamic>> assignments = [];
@@ -477,18 +477,18 @@ void initState() {
   @override
   void dispose() {
     fieldController.dispose();
-    deviceController.dispose();
+  fieldIdController.dispose();
     super.dispose();
   }
 
   Future<void> _saveAssignment() async {
     final fieldName = fieldController.text.trim();
-    final deviceId = deviceController.text.trim();
+    final fieldId = fieldIdController.text.trim();
 
-    if (fieldName.isEmpty || deviceId.isEmpty) {
+    if (fieldName.isEmpty || fieldId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Kon nomi va qurilma ID sini kiriting'),
+          content: Text('Kon nomi va Kon ID sini kiriting'),
         ),
       );
       return;
@@ -501,11 +501,11 @@ void initState() {
     try {
       await supabase.from('device_assignments').upsert(
         {
-          'device_id': deviceId,
+          'field_id': fieldId,
           'field_name': fieldName,
           'updated_at': DateTime.now().toIso8601String(),
         },
-        onConflict: 'device_id',
+        onConflict: 'field_id',
       );
 
       if (!mounted) return;

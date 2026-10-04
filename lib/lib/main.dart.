@@ -605,11 +605,21 @@ else
     (item) => Card(
       child: ListTile(
         leading: const Icon(Icons.devices),
+trailing: IconButton(
+  icon: const Icon(Icons.delete_outline),
+  onPressed: () async {
+    await supabase
+        .from('device_assignments')
+        .delete()
+        .eq('field_id', item['field_id']);
+    await _loadAssignments();
+  },
+),
         title: Text(
           item['field_name']?.toString() ?? '-',
         ),
         subtitle: Text(
-          'Qurilma ID: ${item['device_id']?.toString() ?? '-'}',
+          'Kon ID: ${item['field_id']?.toString() ?? '-'}',
         ),
       ),
     ),

@@ -563,7 +563,7 @@ await _loadAssignments();
           ),
           const SizedBox(height: 16),
           TextField(
-            controller: deviceController,
+            controller: fieldIdController,
             decoration: const InputDecoration(
               labelText: 'Qurilma ID',
               border: OutlineInputBorder(),

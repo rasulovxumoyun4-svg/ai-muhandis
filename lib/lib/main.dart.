@@ -517,7 +517,7 @@ void initState() {
       );
 
       fieldController.clear();
-      deviceController.clear();
+      fieldIdController.clear();
 await _loadAssignments();
     } catch (e) {
       if (!mounted) return;

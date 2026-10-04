@@ -398,7 +398,18 @@ if (admin)
                 );
               },
             ),
-
+if (superAdmin)
+  _MenuCard(
+    icon: Icons.location_on,
+    title: 'Konlarni boshqarish',
+    subtitle: 'Kon va qurilma biriktirish',
+    onTap: () {
+      _open(
+        context,
+        const FieldManagementPage(),
+      );
+    },
+  ),
           if (superAdmin)
             _MenuCard(
               icon: Icons.manage_accounts,
@@ -417,7 +428,197 @@ if (admin)
     );
   }
 }
+class FieldManagementPage extends StatefulWidget {
+  const FieldManagementPage({super.key});
 
+  @override
+  State<FieldManagementPage> createState() =>
+      _FieldManagementPageState();
+}
+
+class _FieldManagementPageState extends State<FieldManagementPage> {
+  final supabase = Supabase.instance.client;
+
+  final fieldController = TextEditingController();
+  final deviceController = TextEditingController();
+
+  bool saving = false;
+List<Map<String, dynamic>> assignments = [];
+bool loadingAssignments = true;
+
+Future<void> _loadAssignments() async {
+  try {
+    final response = await supabase
+        .from('device_assignments')
+        .select()
+        .order('updated_at', ascending: false);
+
+    if (!mounted) return;
+
+    setState(() {
+      assignments =
+          List<Map<String, dynamic>>.from(response);
+      loadingAssignments = false;
+    });
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      loadingAssignments = false;
+    });
+  }
+}
+
+@override
+void initState() {
+  super.initState();
+  _loadAssignments();
+}
+  @override
+  void dispose() {
+    fieldController.dispose();
+    deviceController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveAssignment() async {
+    final fieldName = fieldController.text.trim();
+    final deviceId = deviceController.text.trim();
+
+    if (fieldName.isEmpty || deviceId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kon nomi va qurilma ID sini kiriting'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      saving = true;
+    });
+
+    try {
+      await supabase.from('device_assignments').upsert(
+        {
+          'device_id': deviceId,
+          'field_name': fieldName,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        onConflict: 'device_id',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kon qurilmaga biriktirildi'),
+        ),
+      );
+
+      fieldController.clear();
+      deviceController.clear();
+await _loadAssignments();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saqlashda xato: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          saving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Konlarni boshqarish'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Qurilmani konga biriktirish',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: fieldController,
+            decoration: const InputDecoration(
+              labelText: 'Kon nomi',
+              hintText: 'Masalan: Dengiz yoki Zevarda',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: deviceController,
+            decoration: const InputDecoration(
+              labelText: 'Qurilma ID',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: saving ? null : _saveAssignment,
+            icon: const Icon(Icons.save),
+            label: Text(
+              saving ? 'SAQLANMOQDA...' : 'BIRIKTIRISH',
+            ),
+          ),
+const SizedBox(height: 24),
+
+const Text(
+  'Biriktirilgan qurilmalar',
+  style: TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  ),
+),
+
+const SizedBox(height: 12),
+
+if (loadingAssignments)
+  const Center(
+    child: CircularProgressIndicator(),
+  )
+else if (assignments.isEmpty)
+  const Card(
+    child: Padding(
+      padding: EdgeInsets.all(16),
+      child: Text('Hozircha biriktirilgan qurilma yo‘q'),
+    ),
+  )
+else
+  ...assignments.map(
+    (item) => Card(
+      child: ListTile(
+        leading: const Icon(Icons.devices),
+        title: Text(
+          item['field_name']?.toString() ?? '-',
+        ),
+        subtitle: Text(
+          'Qurilma ID: ${item['device_id']?.toString() ?? '-'}',
+        ),
+      ),
+    ),
+  ),
+        ],
+      ),
+    );
+  }
+}
 class _MenuCard extends StatelessWidget {
   final IconData icon;
   final String title;

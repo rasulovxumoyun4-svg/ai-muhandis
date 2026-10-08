@@ -636,7 +636,7 @@ await _loadAssignments();
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'Yangi kon qo'shish',
+            "Yangi kon qo'shish",
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -670,7 +670,7 @@ await _loadAssignments();
 const SizedBox(height: 24),
 
 const Text(
-  'Ro'yxatdagi konlar',
+  "Ro'yxatdagi konlar",
   style: TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.bold,
@@ -687,7 +687,7 @@ else if (assignments.isEmpty)
   const Card(
     child: Padding(
       padding: EdgeInsets.all(16),
-      child: Text('Hozircha kon qo'shilmagan'),
+      child: Text("Hozircha kon qo'shilmagan"),
     ),
   )
 else

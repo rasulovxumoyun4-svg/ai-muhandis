@@ -173,6 +173,7 @@ if (code != '001') {
     );
     return;
   }
+AppSession.fieldId = fieldId;
 AppSession.fieldName = field['field_name']?.toString();
 }
 
@@ -219,8 +220,10 @@ Future<void> _loginAsOperator() async {
     );
     return;
   }
+AppSession.fieldId = fieldId;
 AppSession.fieldName = field['field_name']?.toString();
-  await _openHome('operator');
+await _openHome('operator');
+
 }
   @override
 void dispose() {
@@ -1104,9 +1107,9 @@ class _TechnologyPageState extends State<TechnologyPage> {
     .select()
     .gte('created_at', cutoff);
 
-if (AppSession.fieldName != null &&
-    AppSession.fieldName!.isNotEmpty) {
-  query = query.eq('field_name', AppSession.fieldName!);
+if (AppSession.fieldId != null &&
+    AppSession.fieldId!.isNotEmpty) {
+  query = query.eq('field_id', AppSession.fieldId!);
 }
 
 final response =
@@ -1434,7 +1437,8 @@ Future<void> _saveHourlyData() async {
       await supabase
           .from('technology_data')
           .delete()
-          .eq('data', date);
+      .eq('date', date)
+.eq('field_id', AppSession.fieldId!);
 
       await _loadTechnologyData();
 
@@ -1492,7 +1496,7 @@ Future<void> _saveHourlyData() async {
       await supabase
           .from('technology_data')
           .delete()
-          .neq('id', -1);
+          .eq('field_id', AppSession.fieldId!);
 
       await _loadTechnologyData();
 

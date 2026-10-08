@@ -3275,10 +3275,18 @@ class _ManagerPageState extends State<ManagerPage> {
 
   Future<void> _loadWorks() async {
     try {
-      final response = await supabase
-          .from('fault_history')
-          .select()
-          .order('created_at', ascending: false);
+      var query = supabase
+    .from('fault_history')
+    .select();
+
+if (!AppSession.isSuperAdmin &&
+    AppSession.fieldId != null &&
+    AppSession.fieldId!.isNotEmpty) {
+  query = query.eq('field_id', AppSession.fieldId!);
+}
+
+final response =
+    await query.order('created_at', ascending: false);
 
       if (!mounted) return;
 
@@ -3346,13 +3354,14 @@ class _ManagerPageState extends State<ManagerPage> {
 
   @override
   Widget build(BuildContext context) {
+final currentField = AppSession.fieldName ?? 'Barcha konlar';
     final open = _countStatus('open');
     final inProgress = _countStatus('in_progress');
     final completed = _countStatus('completed');
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Rahbar paneli'),
+    title: Text('Rahbar paneli — $currentField'),
         actions: [
           IconButton(
             onPressed: _loadWorks,

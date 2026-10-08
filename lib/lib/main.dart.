@@ -602,7 +602,7 @@ if (!AppSession.isSuperAdmin) {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Kon qurilmaga biriktirildi'),
+          content: Text('Kon muvaffaqiyatli saqlandi'),
         ),
       );
 
@@ -636,7 +636,7 @@ await _loadAssignments();
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            'Qurilmani konga biriktirish',
+            'Yangi kon qo'shish',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
@@ -655,7 +655,7 @@ await _loadAssignments();
           TextField(
             controller: fieldIdController,
             decoration: const InputDecoration(
-              labelText: 'Qurilma ID',
+              labelText: 'Kon ID',
               border: OutlineInputBorder(),
             ),
           ),
@@ -664,13 +664,13 @@ await _loadAssignments();
             onPressed: saving ? null : _saveAssignment,
             icon: const Icon(Icons.save),
             label: Text(
-              saving ? 'SAQLANMOQDA...' : 'BIRIKTIRISH',
+              saving ? 'SAQLANMOQDA...' : 'KONNI SAQLASH',
             ),
           ),
 const SizedBox(height: 24),
 
 const Text(
-  'Biriktirilgan qurilmalar',
+  'Ro'yxatdagi konlar',
   style: TextStyle(
     fontSize: 18,
     fontWeight: FontWeight.bold,
@@ -687,7 +687,7 @@ else if (assignments.isEmpty)
   const Card(
     child: Padding(
       padding: EdgeInsets.all(16),
-      child: Text('Hozircha biriktirilgan qurilma yo‘q'),
+      child: Text('Hozircha kon qo'shilmagan'),
     ),
   )
 else

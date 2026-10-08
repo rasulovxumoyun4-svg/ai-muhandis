@@ -2792,10 +2792,18 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Future<void> _loadHistory() async {
     try {
-      final response = await supabase
-          .from('fault_history')
-          .select()
-          .order('created_at', ascending: false);
+      var query = supabase
+    .from('fault_history')
+    .select();
+
+if (!AppSession.isSuperAdmin &&
+    AppSession.fieldId != null &&
+    AppSession.fieldId!.isNotEmpty) {
+  query = query.eq('field_id', AppSession.fieldId!);
+}
+
+final response =
+    await query.order('created_at', ascending: false);
 
       if (!mounted) return;
 

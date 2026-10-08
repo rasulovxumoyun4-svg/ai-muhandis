@@ -3062,6 +3062,7 @@ class _WorkResultPageState extends State<WorkResultPage> {
 
     try {
       await supabase.from('fault_history').insert({
+      'field_id': AppSession.fieldId ?? '',
         'equipment': widget.equipment,
         'tag': widget.tag,
         'alarm': widget.alarm,

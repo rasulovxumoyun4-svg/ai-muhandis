@@ -2070,6 +2070,7 @@ class _EquipmentPageState extends State<EquipmentPage> {
       final response = await supabase
           .from('equipment')
           .select()
+.eq('field_id', AppSession.fieldId ?? '')
           .order('id', ascending: false);
 
       if (!mounted) return;
@@ -2178,6 +2179,7 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
       final response = await supabase
           .from('Documents')
           .select()
+.eq('field_id', AppSession.fieldId ?? '')
           .order('id', ascending: false);
 
       if (!mounted) return;
@@ -2248,6 +2250,7 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
       await supabase.from('Documents').insert({
         'File_name': file.name,
         'Storage_path': storagePath,
+'field_id': AppSession.fieldId ?? '',
       });
 
       await _loadDocuments();

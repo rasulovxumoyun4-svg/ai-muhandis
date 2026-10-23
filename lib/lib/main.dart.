@@ -937,7 +937,7 @@ Future<void> sendQuestion() async {
   });
 
   try {
-    final response = await supabase.functions.invoke(
+  final response = await Supabase.instance.client.functions.invoke(
       'ai_diagnose',
       body: {
         'question': question,

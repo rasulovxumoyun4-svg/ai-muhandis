@@ -942,6 +942,7 @@ Future<void> sendQuestion() async {
       body: {
         'question': question,
 'image': selectedImage != null ? base64Encode(selectedImage!) : null,
+'field_id': AppSession.fieldId ?? '',
       },
     );
 

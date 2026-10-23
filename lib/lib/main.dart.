@@ -920,28 +920,44 @@ class _AiQuestionPageState extends State<AiQuestionPage> {
       result = '';
     });
   }
+Future<void> sendQuestion() async {
+  final question = questionController.text.trim();
 
-  void sendQuestion() {
-    final question = questionController.text.trim();
+  if (selectedImage == null && question.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Rasm tanlang yoki savol yozing'),
+      ),
+    );
+    return;
+  }
 
-    if (selectedImage == null && question.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Rasm tanlang yoki savol yozing',
-          ),
-        ),
-      );
-      return;
-    }
+  setState(() {
+    result = 'AI tahlil qilmoqda...';
+  });
+
+  try {
+    final response = await supabase.functions.invoke(
+      'ai_diagnose',
+      body: {
+        'question': question,
+      },
+    );
+
+    if (!mounted) return;
 
     setState(() {
-      result =
-          'Rasm va savol qabul qilindi.\n\n'
-          'AI tahlil API ulanishi oxirgi bosqichda '
-          'qo‘shiladi.';
+      result = response.data?['answer']?.toString() ??
+          'AI javob qaytarmadi';
+    });
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      result = 'Xatolik: $e';
     });
   }
+}
 
   void removeImage() {
     setState(() {

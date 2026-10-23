@@ -941,7 +941,7 @@ Future<void> sendQuestion() async {
       'ai_diagnose',
       body: {
         'question': question,
-'imageBase64': selectedImage != null ? base64Encode(selectedImage!) : null,
+'image': selectedImage != null ? base64Encode(selectedImage!) : null,
       },
     );
 

@@ -277,7 +277,7 @@ void dispose() {
             TextField(
               controller: codeController,
               obscureText: true,
-              keyboardType: TextInputType.number,
+              keyboardType: TextInputType.text,
               decoration: const InputDecoration(
                 labelText: 'Admin kirish kodi',
                 hintText: 'Kodni kiriting',

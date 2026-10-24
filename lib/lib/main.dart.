@@ -13,6 +13,8 @@ class AppSession {
   static String role = 'operator';
 static String? fieldId;
 static String? fieldName;
+static String? complexId;
+static String? complexName;
 static String? deviceId;
   static bool get isSuperAdmin => role == 'super_admin';
   static bool get isAdmin =>
@@ -160,6 +162,18 @@ if (code != '001' && fieldId.isEmpty) {
   );
   return;
 }
+final complex = await Supabase.instance.client
+    .from('complexes')
+    .select('id, name, code, dispatcher_code')
+    .eq('dispatcher_code', code)
+    .maybeSingle();
+
+if (complex != null) {
+  AppSession.complexId = complex['id']?.toString();
+  AppSession.complexName = complex['name']?.toString();
+  _openHome('dispatcher');
+  return;
+}
 if (code != 'SA_1995') {
   final field = await Supabase.instance.client
       .from('device_assignments')
@@ -189,10 +203,7 @@ AppSession.fieldName = field['field_name']?.toString();
       _openHome('admin');
       return;
     }
-if (code == 'SD_1971') {
-  _openHome('dispatcher');
-  return;
-}
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Kirish kodi noto‘g‘ri'),
@@ -333,7 +344,7 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final admin = AppSession.isAdmin;
     final superAdmin = AppSession.isSuperAdmin;
-
+final dispatcher = AppSession.role == 'dispatcher';
     return Scaffold(
       appBar: AppBar(
         title: const Text('AI Muhandis'),
@@ -364,6 +375,14 @@ class HomePage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+if (dispatcher)
+  Card(
+    child: ListTile(
+      leading: const Icon(Icons.apartment),
+      title: Text(AppSession.complexName ?? 'Kompleks'),
+      subtitle: const Text('Dispatcher kompleksi'),
+    ),
+  ),
           if (admin)
             _MenuCard(
               icon: Icons.engineering,
@@ -631,8 +650,7 @@ final complexCode = complexCodeController.text.trim();
         {
           'field_id': fieldId,
           'field_name': fieldName,
-'complex_name': complexName,
-'complex_code': complexCode,
+'complex_id': complexCode,
           'updated_at': DateTime.now().toIso8601String(),
         },
         onConflict: 'field_id',

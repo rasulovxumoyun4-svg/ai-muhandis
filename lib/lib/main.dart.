@@ -648,6 +648,8 @@ final complexCode = complexCodeController.text.trim();
 
       fieldController.clear();
       fieldIdController.clear();
+complexNameController.clear();
+complexCodeController.clear();
 await _loadAssignments();
     } catch (e) {
       if (!mounted) return;

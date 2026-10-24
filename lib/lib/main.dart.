@@ -154,7 +154,7 @@ await prefs.setString(
 Future<void> _loginWithCode() async {
     final code = codeController.text.trim();
 final fieldId = fieldIdController.text.trim();
-if (code != '001' && fieldId.isEmpty) {
+if (code != '001' && code != '002' && !code.startsWith('SD_') && fieldId.isEmpty) {
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(
       content: Text('Kon ID ni kiriting'),

@@ -529,11 +529,24 @@ class _FieldManagementPageState extends State<FieldManagementPage> {
 
   final fieldController = TextEditingController();
   final fieldIdController = TextEditingController();
-
+final complexNameController = TextEditingController();
+final complexCodeController = TextEditingController();
+ List<Map<String, dynamic>> complexes = [];
   bool saving = false;
 List<Map<String, dynamic>> assignments = [];
 bool loadingAssignments = true;
+Future<void> _loadComplexes() async {
+  final response = await supabase
+      .from('Complexes')
+      .select()
+      .order('id');
 
+  if (!mounted) return;
+
+  setState(() {
+    complexes = List<Map<String, dynamic>>.from(response);
+  });
+}
 Future<void> _loadAssignments() async {
   try {
     final response = await supabase
@@ -561,6 +574,7 @@ Future<void> _loadAssignments() async {
 void initState() {
   super.initState();
   _loadAssignments();
+_loadComplexes();
 }
   @override
   void dispose() {
@@ -568,7 +582,21 @@ void initState() {
   fieldIdController.dispose();
     super.dispose();
   }
+Future<void> _saveComplex() async {
+  final name = complexNameController.text.trim();
+  final code = complexCodeController.text.trim();
 
+  if (name.isEmpty || code.isEmpty) return;
+
+  await supabase.from('Complexes').insert({
+    'name': name,
+    'code': code,
+  });
+
+  complexNameController.clear();
+  complexCodeController.clear();
+  await _loadComplexes();
+}
   Future<void> _saveAssignment() async {
 if (!AppSession.isSuperAdmin) {
   ScaffoldMessenger.of(context).showSnackBar(
@@ -580,11 +608,15 @@ if (!AppSession.isSuperAdmin) {
 }
     final fieldName = fieldController.text.trim();
     final fieldId = fieldIdController.text.trim();
-
-    if (fieldName.isEmpty || fieldId.isEmpty) {
+final complexName = complexNameController.text.trim();
+final complexCode = complexCodeController.text.trim();
+    if (fieldName.isEmpty ||
+    fieldId.isEmpty ||
+    complexName.isEmpty ||
+    complexCode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Kon nomi va Kon ID sini kiriting'),
+          content: Text('Kon nomi, Kon ID, Kompleks nomi va Kompleks kodini kiriting'),
         ),
       );
       return;
@@ -599,6 +631,8 @@ if (!AppSession.isSuperAdmin) {
         {
           'field_id': fieldId,
           'field_name': fieldName,
+'complex_name': complexName,
+'complex_code': complexCode,
           'updated_at': DateTime.now().toIso8601String(),
         },
         onConflict: 'field_id',
@@ -666,6 +700,22 @@ await _loadAssignments();
             ),
           ),
           const SizedBox(height: 16),
+TextField(
+  controller: complexNameController,
+  decoration: const InputDecoration(
+    labelText: 'Kompleks nomi',
+    border: OutlineInputBorder(),
+  ),
+),
+const SizedBox(height: 16),
+TextField(
+  controller: complexCodeController,
+  decoration: const InputDecoration(
+    labelText: 'Kompleks kodi',
+    border: OutlineInputBorder(),
+  ),
+),
+const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: saving ? null : _saveAssignment,
             icon: const Icon(Icons.save),

@@ -25,6 +25,8 @@ static String? deviceId;
         return 'Super Admin';
       case 'admin':
         return 'Admin';
+case 'dispatcher':
+  return 'Dispatcher';
       default:
         return 'Operator';
     }
@@ -138,6 +140,7 @@ await prefs.setString(
   'field_id',
   fieldIdController.text.trim(),
 );
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -157,7 +160,7 @@ if (code != '001' && fieldId.isEmpty) {
   );
   return;
 }
-if (code != '001') {
+if (code != 'SA_1995') {
   final field = await Supabase.instance.client
       .from('device_assignments')
       .select('field_id, field_name')
@@ -177,16 +180,19 @@ AppSession.fieldId = fieldId;
 AppSession.fieldName = field['field_name']?.toString();
 }
 
-    if (code == '001') {
+    if (code == 'SA_1995') {
       _openHome('super_admin');
       return;
     }
 
-    if (code == '002') {
+    if (code == 'AD_1969') {
       _openHome('admin');
       return;
     }
-
+if (code == 'SD_1971') {
+  _openHome('dispatcher');
+  return;
+}
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Kirish kodi noto‘g‘ri'),

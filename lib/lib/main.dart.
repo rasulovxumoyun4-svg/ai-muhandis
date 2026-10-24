@@ -164,7 +164,7 @@ if (code == 'AD_1969') {
 }
 if (code != 'SA_1995' &&
     code != 'AD_1969' &&
-    !code.startsWith('SD_') &&
+    !code.startsWith('D') &&
     fieldId.isEmpty) {
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(
@@ -174,7 +174,7 @@ if (code != 'SA_1995' &&
   return;
 }
 final complex = await Supabase.instance.client
-    .from('complexes')
+  .from('Complexes')  
     .select('id, name, code, dispatcher_code')
     .eq('dispatcher_code', code)
     .maybeSingle();
@@ -341,9 +341,51 @@ const SizedBox(height: 12),
   }
 }
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  List<Map<String, dynamic>> dispatcherFields = [];
+  bool loadingDispatcherFields = false;
+
+  Future<void> _loadDispatcherFields() async {
+    if (AppSession.role != 'dispatcher') return;
+
+    setState(() {
+      loadingDispatcherFields = true;
+    });
+
+    try {
+      final response = await Supabase.instance.client
+          .from('device_assignments')
+          .select()
+          .eq('complex_id', AppSession.complexId ?? '');
+
+      if (!mounted) return;
+
+      setState(() {
+        dispatcherFields =
+            List<Map<String, dynamic>>.from(response);
+        loadingDispatcherFields = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loadingDispatcherFields = false;
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDispatcherFields();
+  }
   void _open(BuildContext context, Widget page) {
     Navigator.push(
       context,
@@ -386,14 +428,46 @@ final dispatcher = AppSession.role == 'dispatcher';
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-if (dispatcher)
+if (dispatcher) ...[
   Card(
     child: ListTile(
+
       leading: const Icon(Icons.apartment),
       title: Text(AppSession.complexName ?? 'Kompleks'),
       subtitle: const Text('Dispatcher kompleksi'),
     ),
   ),
+
+  if (loadingDispatcherFields)
+    const Center(
+      child: CircularProgressIndicator(),
+    )
+  else
+    ...dispatcherFields.map(
+      (field) => Card(
+        child: ListTile(
+onTap: () {
+  AppSession.fieldId = field['field_id']?.toString();
+  AppSession.fieldName = field['field_name']?.toString();
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => const HomePage(),
+    ),
+  );
+},
+          leading: const Icon(Icons.location_on),
+          title: Text(
+            field['field_name']?.toString() ?? 'Kon',
+          ),
+          subtitle: Text(
+            'Kon ID: ${field['field_id'] ?? ''}',
+          ),
+        ),
+      ),
+    ),
+],
           if (admin)
             _MenuCard(
               icon: Icons.engineering,
@@ -433,7 +507,7 @@ if (dispatcher)
             },
           ),
 
-          if (admin)
+         if (admin || dispatcher)
             _MenuCard(
               icon: Icons.folder_copy,
               title: 'Uskunalar va hujjatlar',
@@ -561,6 +635,7 @@ class _FieldManagementPageState extends State<FieldManagementPage> {
   final fieldIdController = TextEditingController();
 final complexNameController = TextEditingController();
 final complexCodeController = TextEditingController();
+final dispatcherCodeController = TextEditingController();
  List<Map<String, dynamic>> complexes = [];
   bool saving = false;
 List<Map<String, dynamic>> assignments = [];
@@ -610,21 +685,26 @@ _loadComplexes();
   void dispose() {
     fieldController.dispose();
   fieldIdController.dispose();
+complexNameController.dispose();
+complexCodeController.dispose();
+dispatcherCodeController.dispose();
     super.dispose();
   }
 Future<void> _saveComplex() async {
   final name = complexNameController.text.trim();
   final code = complexCodeController.text.trim();
-
-  if (name.isEmpty || code.isEmpty) return;
+final dispatcherCode = dispatcherCodeController.text.trim();
+  if (name.isEmpty  code.isEmpty  dispatcherCode.isEmpty) return;
 
   await supabase.from('Complexes').insert({
     'name': name,
     'code': code,
+'dispatcher_code': dispatcherCode,
   });
 
   complexNameController.clear();
   complexCodeController.clear();
+dispatcherCodeController.clear();
   await _loadComplexes();
 }
   Future<void> _saveAssignment() async {
@@ -640,10 +720,12 @@ if (!AppSession.isSuperAdmin) {
     final fieldId = fieldIdController.text.trim();
 final complexName = complexNameController.text.trim();
 final complexCode = complexCodeController.text.trim();
+final dispatcherCode = dispatcherCodeController.text.trim();
     if (fieldName.isEmpty ||
     fieldId.isEmpty ||
     complexName.isEmpty ||
-    complexCode.isEmpty) {
+    complexCode.isEmpty ||
+dispatcherCode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Kon nomi, Kon ID, Kompleks nomi va Kompleks kodini kiriting'),
@@ -657,11 +739,17 @@ final complexCode = complexCodeController.text.trim();
     });
 
     try {
+await supabase.from('Complexes').upsert({
+  'name': complexName,
+  'code': complexCode,
+  'dispatcher_code': dispatcherCode,
+}, onConflict: 'code');
       await supabase.from('device_assignments').upsert(
         {
           'field_id': fieldId,
           'field_name': fieldName,
 'complex_id': complexCode,
+'complex_name': complexName,
           'updated_at': DateTime.now().toIso8601String(),
         },
         onConflict: 'field_id',
@@ -679,6 +767,7 @@ final complexCode = complexCodeController.text.trim();
       fieldIdController.clear();
 complexNameController.clear();
 complexCodeController.clear();
+dispatcherCodeController.clear();
 await _loadAssignments();
     } catch (e) {
       if (!mounted) return;
@@ -743,6 +832,14 @@ TextField(
   controller: complexCodeController,
   decoration: const InputDecoration(
     labelText: 'Kompleks kodi',
+    border: OutlineInputBorder(),
+  ),
+),
+const SizedBox(height: 16),
+TextField(
+  controller: dispatcherCodeController,
+  decoration: const InputDecoration(
+    labelText: 'Dispatcher kodi',
     border: OutlineInputBorder(),
   ),
 ),

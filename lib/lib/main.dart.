@@ -154,6 +154,14 @@ await prefs.setString(
 Future<void> _loginWithCode() async {
     final code = codeController.text.trim();
 final fieldId = fieldIdController.text.trim();
+if (code == 'SA_1995') {
+  _openHome('super_admin');
+  return;
+}
+if (code == 'AD_1969') {
+  _openHome('admin');
+  return;
+}
 if (code != 'SA_1995' &&
     code != 'AD_1969' &&
     !code.startsWith('SD_') &&

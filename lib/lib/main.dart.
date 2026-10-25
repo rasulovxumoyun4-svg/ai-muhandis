@@ -841,7 +841,23 @@ TextField(
     border: OutlineInputBorder(),
   ),
 ),
+TextField(
+  controller: complexCodeController,
+  decoration: const InputDecoration(
+    labelText: 'Kompleks kodi',
+    border: OutlineInputBorder(),
+  ),
+),
 const SizedBox(height: 16),
+TextField(
+  controller: dispatcherCodeController,
+  decoration: const InputDecoration(
+    labelText: 'Dispatcher kodi',
+    border: OutlineInputBorder(),
+  ),
+),
+const SizedBox(height: 16),
+
 FilledButton.icon(
   onPressed: saving ? null : _saveComplex,
   icon: const Icon(Icons.add_business),

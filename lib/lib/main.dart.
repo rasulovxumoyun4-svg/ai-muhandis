@@ -1485,7 +1485,27 @@ final response =
       return _dateText(created.toLocal()) == wanted;
     }).toList();
   }
+Map<String, List<Map<String, dynamic>>> _dailyFolders() {
+  final folders = <String, List<Map<String, dynamic>>>{};
 
+  for (final item in hourlyData) {
+    final savedDate = item['data']?.toString();
+    final created = DateTime.tryParse(
+      item['created_at']?.toString() ?? '',
+    );
+
+    final date = (savedDate != null && savedDate.isNotEmpty)
+        ? savedDate
+        : (created != null ? _dateText(created.toLocal()) : '');
+
+    if (date.isEmpty) continue;
+
+    folders.putIfAbsent(date, () => []);
+    folders[date]!.add(item);
+  }
+
+  return folders;
+}
   double _average(
     List<Map<String, dynamic>> rows,
     String field,
@@ -1974,6 +1994,9 @@ Widget _numberField(
   @override
   Widget build(BuildContext context) {
     final selectedRows = _dataForDate(selectedDate);
+final dailyFolders = _dailyFolders();
+final sortedFolderDates = dailyFolders.keys.toList()
+  ..sort((a, b) => b.compareTo(a));
 
     return Scaffold(
       appBar: AppBar(
@@ -1995,6 +2018,43 @@ Widget _numberField(
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+if (sortedFolderDates.isNotEmpty) ...[
+  const Text(
+    'Kunlik arxiv',
+    style: TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+  const SizedBox(height: 8),
+
+  ...sortedFolderDates.map((date) {
+    final rows = dailyFolders[date] ?? [];
+
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.folder),
+        title: Text(date),
+        subtitle: Text('${rows.length} ta soatlik ma’lumot'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          final parts = date.split('-');
+          if (parts.length == 3) {
+            setState(() {
+              selectedDate = DateTime(
+                int.parse(parts[0]),
+                int.parse(parts[1]),
+                int.parse(parts[2]),
+              );
+            });
+          }
+        },
+      ),
+    );
+  }),
+
+  const SizedBox(height: 16),
+],
                   if (AppSession.isAdmin) ...[
                     const Text(
                       'Texnologik parametrlarni kiritish',

@@ -710,6 +710,46 @@ if (dispatcherCode.isEmpty) return;
 dispatcherCodeController.clear();
   await _loadComplexes();
 }
+Future<void> _deleteComplex(Map<String, dynamic> complex) async {
+  if (!AppSession.isSuperAdmin) return;
+
+  final code = complex['code']?.toString() ?? '';
+  if (code.isEmpty) return;
+final confirmed = await showDialog<bool>(
+  context: context,
+  builder: (context) => AlertDialog(
+    title: const Text('Kompleksni o‘chirish'),
+    content: Text(
+      '${complex['name'] ?? 'Kompleks'} va unga biriktirilgan barcha konlar o‘chirilsinmi?',
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('BEKOR QILISH'),
+      ),
+      TextButton(
+        onPressed: () => Navigator.pop(context, true),
+        child: const Text('O‘CHIRISH'),
+      ),
+    ],
+  ),
+);
+
+if (confirmed != true) return;
+
+  await supabase
+      .from('device_assignments')
+      .delete()
+      .eq('complex_id', code);
+
+  await supabase
+      .from('Complexes')
+      .delete()
+      .eq('code', code);
+
+  await _loadComplexes();
+  await _loadAssignments();
+}
   Future<void> _saveAssignment() async {
 if (!AppSession.isSuperAdmin) {
   ScaffoldMessenger.of(context).showSnackBar(

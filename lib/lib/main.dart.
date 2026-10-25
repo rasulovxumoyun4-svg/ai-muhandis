@@ -721,14 +721,8 @@ if (!AppSession.isSuperAdmin) {
 }
     final fieldName = fieldController.text.trim();
     final fieldId = fieldIdController.text.trim();
-final complexName = complexNameController.text.trim();
-final complexCode = complexCodeController.text.trim();
-final dispatcherCode = dispatcherCodeController.text.trim();
-    if (fieldName.isEmpty ||
-    fieldId.isEmpty ||
-    complexName.isEmpty ||
-    complexCode.isEmpty ||
-dispatcherCode.isEmpty) {
+if (fieldName.isEmpty || fieldId.isEmpty) {
+    
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Kon nomi, Kon ID, Kompleks nomi va Kompleks kodini kiriting'),
@@ -742,11 +736,7 @@ dispatcherCode.isEmpty) {
     });
 
     try {
-await supabase.from('Complexes').upsert({
-  'name': complexName,
-  'code': complexCode,
-  'dispatcher_code': dispatcherCode,
-}, onConflict: 'code');
+
       await supabase.from('device_assignments').upsert(
         {
           'field_id': fieldId,
@@ -768,9 +758,7 @@ await supabase.from('Complexes').upsert({
 
       fieldController.clear();
       fieldIdController.clear();
-complexNameController.clear();
-complexCodeController.clear();
-dispatcherCodeController.clear();
+
 await _loadAssignments();
     } catch (e) {
       if (!mounted) return;
@@ -798,6 +786,51 @@ await _loadAssignments();
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+const Text(
+  'Yangi kompleks qo‘shish',
+  style: TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  ),
+),
+const SizedBox(height: 16),
+TextField(
+  controller: complexNameController,
+  decoration: const InputDecoration(
+    labelText: 'Kompleks nomi',
+    border: OutlineInputBorder(),
+  ),
+),
+const SizedBox(height: 16),
+FilledButton.icon(
+  onPressed: saving ? null : _saveComplex,
+  icon: const Icon(Icons.add_business),
+  label: const Text('KOMPLEKSNI SAQLASH'),
+),
+const SizedBox(height: 24),
+const Text(
+  "Ro'yxatdagi komplekslar",
+  style: TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  ),
+),
+const SizedBox(height: 12),
+
+...complexes.map((complex) => Card(
+  child: ListTile(
+    title: Text(complex['name']?.toString() ?? ''),
+    subtitle: Text('Kompleks kodi: ${complex['code'] ?? ''}'),
+    trailing: AppSession.isSuperAdmin
+        ? IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _deleteComplex(complex),
+          )
+        : null,
+  ),
+)),
+
+const SizedBox(height: 24),
           const Text(
             "Yangi kon qo'shish",
             style: TextStyle(
@@ -823,29 +856,28 @@ await _loadAssignments();
             ),
           ),
           const SizedBox(height: 16),
-TextField(
-  controller: complexNameController,
+DropdownButtonFormField<String>(
   decoration: const InputDecoration(
-    labelText: 'Kompleks nomi',
+    labelText: 'Kompleksni tanlang',
     border: OutlineInputBorder(),
   ),
+  items: complexes.map((complex) {
+    return DropdownMenuItem<String>(
+      value: complex['code']?.toString(),
+      child: Text(complex['name']?.toString() ?? ''),
+    );
+  }).toList(),
+  onChanged: (value) {
+    final complex = complexes.firstWhere(
+      (item) => item['code']?.toString() == value,
+    );
+    complexNameController.text = complex['name']?.toString() ?? '';
+    complexCodeController.text = complex['code']?.toString() ?? '';
+    dispatcherCodeController.text =
+        complex['dispatcher_code']?.toString() ?? '';
+  },
 ),
-const SizedBox(height: 16),
-TextField(
-  controller: complexCodeController,
-  decoration: const InputDecoration(
-    labelText: 'Kompleks kodi',
-    border: OutlineInputBorder(),
-  ),
-),
-const SizedBox(height: 16),
-TextField(
-  controller: dispatcherCodeController,
-  decoration: const InputDecoration(
-    labelText: 'Dispatcher kodi',
-    border: OutlineInputBorder(),
-  ),
-),
+
 const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: saving ? null : _saveAssignment,

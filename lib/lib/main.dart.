@@ -343,7 +343,7 @@ TextField(
 SizedBox(
   width: double.infinity,
   child: OutlinedButton.icon(
-    onPressed: _loginWithCode,
+    onPressed: _loginAsDispatcher,
     icon: const Icon(Icons.monitor),
     label: const Text('DISPATCHER SIFATIDA KIRISH'),
   ),

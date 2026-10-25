@@ -781,8 +781,8 @@ if (fieldName.isEmpty || fieldId.isEmpty) {
         {
           'field_id': fieldId,
           'field_name': fieldName,
-'complex_id': complexCode,
-'complex_name': complexName,
+'complex_id': complexCodeController.text.trim(),
+'complex_name': complexNameController.text.trim(),
           'updated_at': DateTime.now().toIso8601String(),
         },
         onConflict: 'field_id',

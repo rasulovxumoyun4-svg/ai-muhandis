@@ -696,8 +696,9 @@ Future<void> _saveComplex() async {
   final name = complexNameController.text.trim();
   final code = complexCodeController.text.trim();
 final dispatcherCode = dispatcherCodeController.text.trim();
-  if (name.isEmpty  code.isEmpty  dispatcherCode.isEmpty) return;
-
+  if (name.isEmpty) return;
+if (code.isEmpty) return;
+if (dispatcherCode.isEmpty) return;
   await supabase.from('Complexes').insert({
     'name': name,
     'code': code,

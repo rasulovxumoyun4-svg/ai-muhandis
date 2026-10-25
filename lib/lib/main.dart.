@@ -15,6 +15,7 @@ static String? fieldId;
 static String? fieldName;
 static String? complexId;
 static String? complexName;
+static String? complexCode;
 static String? deviceId;
   static bool get isSuperAdmin => role == 'super_admin';
   static bool get isAdmin =>
@@ -182,6 +183,7 @@ final complex = await Supabase.instance.client
 if (complex != null) {
   AppSession.complexId = complex['id']?.toString();
   AppSession.complexName = complex['name']?.toString();
+AppSession.complexCode = complex['code']?.toString();
   _openHome('dispatcher');
   return;
 }
@@ -363,7 +365,7 @@ class _HomePageState extends State<HomePage> {
       final response = await Supabase.instance.client
           .from('device_assignments')
           .select()
-          .eq('complex_id', AppSession.complexId ?? '');
+          .eq('complex_id', AppSession.complexCode ?? '');
 
       if (!mounted) return;
 
@@ -507,7 +509,7 @@ onTap: () {
             },
           ),
 
-         if (admin || dispatcher)
+         if (admin)
             _MenuCard(
               icon: Icons.folder_copy,
               title: 'Uskunalar va hujjatlar',

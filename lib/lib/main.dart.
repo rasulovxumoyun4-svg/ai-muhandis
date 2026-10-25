@@ -1486,7 +1486,8 @@ Map<String, List<Map<String, dynamic>>> _dailyFolders() {
         : (created != null ? _dateText(created.toLocal()) : '');
 
     if (date.isEmpty) continue;
-
+final today = _dateText(DateTime.now());
+if (date == today) continue;
     folders.putIfAbsent(date, () => []);
     folders[date]!.add(item);
   }

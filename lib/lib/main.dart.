@@ -151,7 +151,31 @@ await prefs.setString(
       ),
     );
   }
+Future<void> _loginAsDispatcher() async {
+  final code = codeController.text.trim();
 
+  final complex = await Supabase.instance.client
+      .from('Complexes')
+      .select('id, name, code, dispatcher_code')
+      .eq('dispatcher_code', code)
+      .maybeSingle();
+
+  if (complex == null) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Dispatcher kodi noto‘g‘ri'),
+      ),
+    );
+    return;
+  }
+
+  AppSession.complexId = complex['id']?.toString();
+  AppSession.complexName = complex['name']?.toString();
+  AppSession.complexCode = complex['code']?.toString();
+
+  _openHome('dispatcher');
+}
 Future<void> _loginWithCode() async {
     final code = codeController.text.trim();
 final fieldId = fieldIdController.text.trim();
@@ -316,10 +340,19 @@ TextField(
                 label: const Text('KIRISH'),
               ),
             ),
-
+SizedBox(
+  width: double.infinity,
+  child: OutlinedButton.icon(
+    onPressed: _loginWithCode,
+    icon: const Icon(Icons.monitor),
+    label: const Text('DISPATCHER SIFATIDA KIRISH'),
+  ),
+),
 const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
+
+            SizedBox(            
+width: double.infinity,
+
               child: OutlinedButton.icon(
                 onPressed: () async {
   await _loginAsOperator();

@@ -488,9 +488,11 @@ onTap: () {
   Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (_) => const HomePage(),
+      builder: (_) => const FieldHomePage(),
     ),
   );
+},
+
 },
           leading: const Icon(Icons.location_on),
           title: Text(
@@ -3889,6 +3891,41 @@ class UserManagementPage extends StatelessWidget {
               'Texnik hujjatlar va nosozliklar '
                   'tarixini ko‘ra olmaydi',
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+class FieldHomePage extends StatelessWidget {
+  const FieldHomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(AppSession.fieldName ?? 'Kon'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.monitor_heart),
+              title: const Text('Sutkalik monitoring'),
+              subtitle: const Text(
+                'Har soatlik ko‘rsatkichlar va kunlik arxiv',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const TechnologyPage(),
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),

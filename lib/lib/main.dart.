@@ -530,19 +530,6 @@ onTap: () {
               },
             ),
 
-          _MenuCard(
-            icon: Icons.monitor_heart,
-            title: 'Sutkalik monitoring',
-            subtitle:
-                'Bosim, temperatura, gaz sarfi va RPM',
-            onTap: () {
-              _open(
-                context,
-                const TechnologyPage(),
-              );
-            },
-          ),
-
          if (admin)
             _MenuCard(
               icon: Icons.folder_copy,

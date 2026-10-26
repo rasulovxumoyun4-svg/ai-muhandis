@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -2590,80 +2590,77 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
   }
 
   Future<void> _pickAndUploadDocument() async {
-    if (!AppSession.isAdmin) return;
+  if (!AppSession.isAdmin) return;
 
-    final result = await FilePicker.platform.pickFiles(
-      withData: true,
-      allowMultiple: false,
+  final result = await FilePicker.platform.pickFiles(
+    withData: false,
+    allowMultiple: false,
+  );
+
+  if (result == null || result.files.isEmpty) return;
+
+  final file = result.files.first;
+  final filePath = file.path;
+
+  if (filePath == null || filePath.isEmpty) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fayl yo‘lini o‘qib bo‘lmadi'),
+      ),
     );
+    return;
+  }
 
-    if (result == null || result.files.isEmpty) return;
+  setState(() {
+    uploading = true;
+  });
 
-    final file = result.files.first;
-    final bytes = file.bytes;
+  try {
+    final safeName = file.name.replaceAll(' ', '_');
 
-    if (bytes == null) {
-      if (!mounted) return;
+    final storagePath =
+        '${DateTime.now().millisecondsSinceEpoch}_$safeName';
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Faylni o‘qib bo‘lmadi'),
-        ),
-      );
-      return;
-    }
+    await supabase.storage
+        .from('technical-documents')
+        .upload(
+          storagePath,
+          File(filePath),
+        );
 
-    setState(() {
-      uploading = true;
+    await supabase.from('Documents').insert({
+      'File_name': file.name,
+      'Storage_path': storagePath,
+      'field_id': AppSession.fieldId ?? '',
     });
 
-    try {
-      final safeName = file.name.replaceAll(' ', '_');
+    await _loadDocuments();
 
-      final storagePath =
-          '${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    if (!mounted) return;
 
-      await supabase.storage
-          .from('technical-documents')
-          .uploadBinary(
-            storagePath,
-            bytes,
-            fileOptions: const FileOptions(
-              upsert: false,
-            ),
-          );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Hujjat muvaffaqiyatli yuklandi'),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
 
-      await supabase.from('Documents').insert({
-        'File_name': file.name,
-        'Storage_path': storagePath,
-'field_id': AppSession.fieldId ?? '',
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Hujjat yuklashda xato: $e'),
+      ),
+    );
+  } finally {
+    if (mounted) {
+      setState(() {
+        uploading = false;
       });
-
-      await _loadDocuments();
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Hujjat muvaffaqiyatli yuklandi'),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Hujjat yuklashda xato: $e'),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          uploading = false;
-        });
-      }
     }
   }
+}
+  
 
   Future<void> _deleteDocument(
     Map<String, dynamic> document,

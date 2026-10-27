@@ -1212,7 +1212,7 @@ class _AiQuestionPageState extends State<AiQuestionPage> {
 
     final image = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 85,
+      imageQuality: 100,
     );
 
     if (image == null) return;

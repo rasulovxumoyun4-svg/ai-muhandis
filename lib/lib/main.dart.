@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:io';
@@ -1619,7 +1620,7 @@ SignalImageBridge.rememberAnswer(question, lastAiSignalAnalysis);
   }
 }
 
-class TechnologyPage extends StatefulWidget {
+class _TechnologyPageState extends State<TechnologyPage> with WidgetsBindingObserver {
   const TechnologyPage({super.key});
 
   @override
@@ -1639,15 +1640,25 @@ class _TechnologyPageState extends State<TechnologyPage> {
   List<Map<String, dynamic>> hourlyData = [];
   bool loading = true;
   bool saving = false;
-
+bool _monitoringFetchInProgress = false;
+bool _monitoringUsingOfflineCache = false;
+bool _hasMonitoringSnapshot = false;
+DateTime? _monitoringLastSynced;
+Timer? _monitoringRefreshTimer;
   DateTime selectedDate = DateTime.now();
 
-  @override
-  void initState() {
-    super.initState();
+@override
+void initState() {
+  super.initState();
+  WidgetsBinding.instance.addObserver(this);
+  _loadTechnologyData();
+}
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.resumed && mounted) {
     _loadTechnologyData();
   }
-
+}
   String _dateText(DateTime date) {
     final y = date.year.toString().padLeft(4, '0');
     final m = date.month.toString().padLeft(2, '0');

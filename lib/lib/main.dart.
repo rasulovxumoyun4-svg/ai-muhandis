@@ -35,6 +35,111 @@ case 'dispatcher':
     }
   }
 }
+
+/// Xotirada saqlanadigan so‘nggi operator rasmi.
+/// Rasm Supabase bazasiga yoki telefondagi doimiy xotiraga bu yerda yozilmaydi.
+class SignalImageBridge {
+  static Uint8List? image;
+  static String? fieldId;
+  static String question = '';
+  static String analysis = '';
+
+  static void remember(Uint8List bytes, String questionText) {
+    image = Uint8List.fromList(bytes);
+    fieldId = AppSession.fieldId;
+    question = questionText;
+    analysis = '';
+  }
+
+  static void rememberAnswer(String questionText, String answer) {
+    if (fieldId != AppSession.fieldId) {
+      image = null;
+      fieldId = AppSession.fieldId;
+    }
+    question = questionText;
+    analysis = answer;
+  }
+
+  static String analysisForCurrentField() {
+    return fieldId == AppSession.fieldId ? analysis : '';
+  }
+
+  static Uint8List? imageForCurrentField() {
+    return fieldId == AppSession.fieldId ? image : null;
+  }
+
+  static void clear() {
+    image = null;
+    question = '';
+    analysis = '';
+    fieldId = null;
+  }
+}
+
+/// Mavjud `ai_diagnose` Edge Function bilan bir xil aloqa usuli.
+/// Hujjatlar ro‘yxati yordamchi ma’lumot; matn/sahifalarni server tekshirishi shart.
+class AiMuhandisService {
+  static Future<String> ask({
+    required String question,
+    Uint8List? image,
+    String mode = 'question',
+  }) async {
+    final response = await Supabase.instance.client.functions.invoke(
+      'ai_diagnose',
+      body: {
+        'question': question,
+        'mode': mode,
+        'image': image == null ? null : base64Encode(image),
+        'field_id': AppSession.fieldId ?? '',
+      },
+    );
+    final data = response.data;
+    if (data is Map) {
+      if (data['error'] != null) {
+        throw StateError(data['error'].toString());
+      }
+      final answer = data['answer'];
+      if (answer != null && answer.toString().trim().isNotEmpty) {
+        return answer.toString();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data;
+    throw StateError('AI javobi olinmadi');
+  }
+
+  static Future<List<String>> currentDocumentNames() async {
+    final fieldId = AppSession.fieldId?.trim() ?? '';
+    if (fieldId.isEmpty) return <String>[];
+    final rows = await Supabase.instance.client
+        .from('Documents')
+        .select('File_name')
+        .eq('field_id', fieldId);
+    return (rows as List)
+        .map((item) => item['File_name']?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  /// Fayl nomi / TAG bo‘yicha taxminiy reyting. Aniq sahifa qidiruvini
+  /// Edge Function bajarishi kerak; bu qidiruv uni almashtirmaydi.
+  static List<String> rankDocuments(List<String> names, String query) {
+    final terms = query.toLowerCase()
+        .split(RegExp(r'[^a-z0-9а-яё_-]+'))
+        .where((word) => word.length >= 3)
+        .toSet();
+    final ranked = names.toList()
+      ..sort((a, b) {
+        int score(String name) {
+          final lower = name.toLowerCase();
+          return terms.where((term) => lower.contains(term)).length;
+        }
+        return score(b).compareTo(score(a));
+      });
+    return ranked;
+  }
+}
+
  Future<void> loadDeviceIdentity() async {
   final prefs = await SharedPreferences.getInstance();
 
@@ -403,8 +508,12 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
 
       setState(() {
-        dispatcherFields =
-            List<Map<String, dynamic>>.from(response);
+        final unique = <String, Map<String, dynamic>>{};
+        for (final row in List<Map<String, dynamic>>.from(response)) {
+          final key = row['field_id']?.toString() ?? '';
+          if (key.isNotEmpty) unique[key] = row;
+        }
+        dispatcherFields = unique.values.toList();
         loadingDispatcherFields = false;
       });
     } catch (e) {
@@ -446,6 +555,8 @@ final dispatcher = AppSession.role == 'dispatcher';
           IconButton(
             tooltip: 'Chiqish',
             onPressed: () {
+              SignalImageBridge.clear();
+              lastAiSignalAnalysis = '';
               AppSession.role = 'operator';
 
               Navigator.pushAndRemoveUntil(
@@ -481,16 +592,17 @@ if (dispatcher) ...[
     ...dispatcherFields.map(
       (field) => Card(
         child: ListTile(
-onTap: () {
+onTap: () async {
   AppSession.fieldId = field['field_id']?.toString();
   AppSession.fieldName = field['field_name']?.toString();
-
-  Navigator.push(
+  await Navigator.push(
     context,
-    MaterialPageRoute(
-      builder: (_) => const FieldHomePage(),
-    ),
+    MaterialPageRoute(builder: (_) => const FieldHomePage()),
   );
+  if (AppSession.role == 'dispatcher') {
+    AppSession.fieldId = null;
+    AppSession.fieldName = null;
+  }
 },
 
           leading: const Icon(Icons.location_on),
@@ -504,6 +616,18 @@ onTap: () {
       ),
     ),
 ],
+          if (superAdmin)
+            _MenuCard(
+              icon: Icons.map_outlined,
+              title: 'Ko‘rish uchun konni tanlash',
+              subtitle: AppSession.fieldName ?? 'Hozir kon tanlanmagan',
+              onTap: () async {
+                await Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const SuperAdminFieldChooserPage(),
+                ));
+                if (mounted) setState(() {});
+              },
+            ),
           if (admin)
             _MenuCard(
               icon: Icons.engineering,
@@ -517,8 +641,7 @@ onTap: () {
               },
             ),
 
-          if (admin)
-            _MenuCard(
+          _MenuCard(
               icon: Icons.smart_toy,
               title: 'AI ga savol',
               subtitle: 'Rasm va operator savoli',
@@ -529,8 +652,7 @@ onTap: () {
                 );
               },
             ),
-if (admin)
-  _MenuCard(
+_MenuCard(
     icon: Icons.monitor_heart,
     title: 'Sutkalik monitoring',
     subtitle: 'Har soatlik ko‘rsatkichlar va kunlik arxiv',
@@ -583,8 +705,7 @@ if (admin)
               },
             ),
 
-          if (admin)
-            _MenuCard(
+          _MenuCard(
               icon: Icons.account_tree,
               title: 'Signal zanjiri',
               subtitle:
@@ -654,6 +775,69 @@ if (superAdmin)
     );
   }
 }
+/// Super Admin uchun faqat ko‘rish kontekstini almashtiradi.
+/// Qurilmaning fizik kon biriktirilishini o‘zgartirmaydi.
+class SuperAdminFieldChooserPage extends StatefulWidget {
+  const SuperAdminFieldChooserPage({super.key});
+
+  @override
+  State<SuperAdminFieldChooserPage> createState() =>
+      _SuperAdminFieldChooserPageState();
+}
+
+class _SuperAdminFieldChooserPageState
+    extends State<SuperAdminFieldChooserPage> {
+  List<Map<String, dynamic>> fields = [];
+  String? error;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('device_assignments')
+          .select('field_id, field_name');
+      if (!mounted) return;
+      final unique = <String, Map<String, dynamic>>{};
+      for (final field in List<Map<String, dynamic>>.from(response)) {
+        final id = field['field_id']?.toString() ?? '';
+        if (id.isNotEmpty) unique[id] = field;
+      }
+      setState(() { fields = unique.values.toList(); loading = false; });
+    } catch (e) {
+      if (mounted) setState(() { error = '$e'; loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Konni tanlash')),
+    body: loading ? const Center(child: CircularProgressIndicator())
+      : error != null ? Center(child: Text('Konlar yuklanmadi: $error'))
+      : ListView.builder(
+          itemCount: fields.length,
+          itemBuilder: (context, index) {
+            final field = fields[index];
+            return ListTile(
+              leading: const Icon(Icons.location_on_outlined),
+              title: Text(field['field_name']?.toString() ?? 'Kon'),
+              subtitle: Text(field['field_id']?.toString() ?? ''),
+              onTap: () {
+                AppSession.fieldId = field['field_id']?.toString();
+                AppSession.fieldName = field['field_name']?.toString();
+                Navigator.pop(context);
+              },
+            );
+          },
+        ),
+  );
+}
+
 class FieldManagementPage extends StatefulWidget {
   const FieldManagementPage({super.key});
 
@@ -1076,32 +1260,53 @@ class _DiagnosticPageState extends State<DiagnosticPage> {
 
   String result = '';
 
-  void analyze() {
+  bool analyzing = false;
+
+  Future<void> analyze() async {
     final equipment = equipmentController.text.trim();
     final tag = tagController.text.trim();
     final alarm = alarmController.text.trim();
 
-    if (equipment.isEmpty ||
-        tag.isEmpty ||
-        alarm.isEmpty) {
+    if (equipment.isEmpty && tag.isEmpty && alarm.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Uskuna, TAG va Signal/Alarm/Tripni kiriting',
-          ),
-        ),
+        const SnackBar(content: Text('Uskuna, TAG yoki Signal/Alarm/Tripni kiriting')),
       );
       return;
     }
-
     setState(() {
-      result =
-          'Uskuna: $equipment\n'
-          'TAG: $tag\n'
-          'Signal/Alarm/Trip: $alarm\n\n'
-          'AI diagnostika API ulanishi oxirgi bosqichda '
-          'qo‘shiladi.';
+      analyzing = true;
+      result = 'AI texnik hujjatlarni tekshirmoqda...';
     });
+    try {
+      final documentNames = await AiMuhandisService.currentDocumentNames();
+      if (documentNames.isEmpty) {
+        throw StateError('Ushbu kon uchun hujjatlar topilmadi. Avval hujjat yuklang yoki Kon ID ni tekshiring.');
+      }
+      final ranked = AiMuhandisService.rankDocuments(
+        documentNames, '$equipment $tag $alarm',
+      );
+      final answer = await AiMuhandisService.ask(mode: 'diagnostic', question: """
+Texnik diagnostika, faqat shu konning yuklangan hujjatlari asosida.
+Uskuna: $equipment
+TAG: $tag
+Signal/Alarm/Trip: $alarm
+Ushbu konga tegishli hujjatlar: ${ranked.join('; ')}
+
+Signalni o‘zbekchaga tarjima qiling. Ehtimoliy sabablar, xavfsiz tekshirish
+qadamlari, signal manbai va ruxsat etilgan yechimlarni keltiring.
+Har bir texnik dalil uchun haqiqatan topilgan HUJJAT NOMI va SAHIFASINI
+ko‘rsating. Sahifa topilmasa "hujjatda tasdiqlanmadi" deb yozing.
+Himoya, interlock yoki tripni chetlab o‘tishni taklif qilmang.
+Hujjatda yo‘q raqam/ulagich/TAGlarni taxmin qilmang.
+""");
+      if (!mounted) return;
+      setState(() => result = answer);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => result = 'Diagnostika bajarilmadi: $e');
+    } finally {
+      if (mounted) setState(() => analyzing = false);
+    }
   }
 
   @override
@@ -1149,7 +1354,7 @@ class _DiagnosticPageState extends State<DiagnosticPage> {
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: analyze,
+            onPressed: analyzing ? null : analyze,
             icon: const Icon(Icons.analytics),
             label: const Text('AI TAHLIL'),
           ),
@@ -1225,6 +1430,7 @@ class _AiQuestionPageState extends State<AiQuestionPage> {
       selectedImage = bytes;
       imageName = image.name;
       result = '';
+      SignalImageBridge.remember(bytes, questionController.text.trim());
     });
   }
 Future<void> sendQuestion() async {
@@ -1256,6 +1462,7 @@ Future<void> sendQuestion() async {
     if (!mounted) return;
 lastAiSignalAnalysis =
     response.data?['answer']?.toString() ?? '';
+SignalImageBridge.rememberAnswer(question, lastAiSignalAnalysis);
     setState(() {
       result = response.data?['answer']?.toString() ??
           'AI javob qaytarmadi';
@@ -1270,6 +1477,7 @@ lastAiSignalAnalysis =
 }
 
   void removeImage() {
+    SignalImageBridge.clear();
     setState(() {
       selectedImage = null;
       imageName = null;
@@ -1448,7 +1656,38 @@ final response =
         hourlyData = rows;
         loading = false;
       });
+      final fieldId = AppSession.fieldId;
+      if (fieldId != null && fieldId.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('hourly_cache_$fieldId', jsonEncode(rows));
+      }
     } catch (e) {
+      // Internet uzilganda faqat shu kon uchun avval ko‘rilgan 30 kunlik yozuvlar.
+      final fieldId = AppSession.fieldId;
+      if (fieldId != null && fieldId.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        final saved = prefs.getString('hourly_cache_$fieldId');
+        if (saved != null) {
+          try {
+            final list = jsonDecode(saved) as List;
+            final today = DateTime.now();
+            final valid = list
+                .map((value) => Map<String, dynamic>.from(value as Map))
+                .where((row) {
+                  final date = DateTime.tryParse(
+                    row['created_at']?.toString() ?? '',
+                  );
+                  return date != null &&
+                      today.difference(date.toLocal()).inDays <= 30;
+                }).toList();
+            if (mounted) setState(() {
+              hourlyData = valid;
+              loading = false;
+            });
+            return;
+          } catch (_) { /* Cache buzilgan bo‘lsa onlayn xato chiqadi. */ }
+        }
+      }
       if (!mounted) return;
 
       setState(() {
@@ -2554,6 +2793,40 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
   List<Map<String, dynamic>> documents = [];
   bool loading = true;
   bool uploading = false;
+  bool indexing = false;
+  String indexStatus = '';
+
+  Future<void> _indexExistingDocuments() async {
+    if (!AppSession.isAdmin || indexing) return;
+    final pdfFiles = documents.where((doc) =>
+        (doc['File_name']?.toString().toLowerCase() ?? '').endsWith('.pdf')).toList();
+    if (pdfFiles.isEmpty) return;
+    setState(() { indexing = true; indexStatus = 'PDF indekslash boshlandi'; });
+    var succeeded = 0;
+    var failed = 0;
+    for (var i = 0; i < pdfFiles.length; i++) {
+      if (!mounted) break;
+      setState(() => indexStatus = 'PDF ${i + 1}/${pdfFiles.length} indekslanmoqda...');
+      try {
+        final response = await supabase.functions.invoke('ai_diagnose', body: {
+          'action': 'index_document',
+          'document_id': pdfFiles[i]['id'].toString(),
+          'field_id': AppSession.fieldId ?? '',
+        });
+        final data = response.data;
+        if (data is Map && data['indexed'] == true) {
+          succeeded++;
+        } else {
+          failed++;
+        }
+      } catch (_) { failed++; }
+    }
+    if (!mounted) return;
+    setState(() {
+      indexing = false;
+      indexStatus = 'Tayyor: $succeeded PDF. Xato: $failed PDF.';
+    });
+  }
 
   @override
   void initState() {
@@ -2630,12 +2903,27 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
           File(filePath),
         );
 
-    await supabase.from('Documents').insert({
+    final inserted = await supabase.from('Documents').insert({
       'File_name': file.name,
       'Storage_path': storagePath,
       'field_id': AppSession.fieldId ?? '',
-    });
+    }).select('id').single();
 
+    // PDF tasnifi yordamchi xizmat. Xato bersa yuklangan fayl saqlanadi.
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+      try {
+        final response = await supabase.functions.invoke('ai_diagnose', body: {
+          'action': 'index_document',
+          'document_id': inserted['id'].toString(),
+          'field_id': AppSession.fieldId ?? '',
+        });
+        if (response.data is Map && response.data['indexed'] != true) {
+          indexStatus = 'Hujjat yuklandi, AI indeksi keyin bajariladi';
+        }
+      } catch (_) {
+        indexStatus = 'Hujjat yuklandi, AI indeksi keyin bajariladi';
+      }
+    }
     await _loadDocuments();
 
     if (!mounted) return;
@@ -2760,9 +3048,38 @@ ScaffoldMessenger.of(context).showSnackBar(
             )
           : null,
       body: loading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
+          : documents.isNotEmpty && AppSession.isAdmin
+              ? Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Column(children: [
+                      OutlinedButton.icon(
+                        onPressed: indexing ? null : _indexExistingDocuments,
+                        icon: const Icon(Icons.manage_search),
+                        label: Text(indexing ? 'HUJJATLAR INDEKSLANMOQDA...' :
+                            'MAVJUD PDFLARNI AI INDEKSLASH'),
+                      ),
+                      if (indexStatus.isNotEmpty) Text(indexStatus),
+                    ]),
+                  ),
+                  Expanded(child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: documents.length,
+                    itemBuilder: (context, index) {
+                      final document = documents[index];
+                      return Card(child: ListTile(
+                        leading: const Icon(Icons.description),
+                        title: Text(document['File_name']?.toString() ?? 'Hujjat'),
+                        subtitle: const Text('Texnik hujjatlar bazasi'),
+                        trailing: AppSession.isSuperAdmin ? IconButton(
+                          onPressed: () => _deleteDocument(document),
+                          icon: const Icon(Icons.delete_outline),
+                        ) : null,
+                      ));
+                    },
+                  )),
+                ])
           : documents.isEmpty
               ? const Center(
                   child: Text(
@@ -2978,6 +3295,33 @@ class ScadaTrendPage extends StatefulWidget {
 class _ScadaTrendPageState extends State<ScadaTrendPage> {
   Uint8List? selectedImage;
   String? imageName;
+  bool analyzing = false;
+  String aiResult = '';
+
+  Future<void> _analyzeTrend() async {
+    final picture = selectedImage;
+    if (picture == null) return;
+    setState(() { analyzing = true; aiResult = 'Trend tahlil qilinmoqda...'; });
+    try {
+      final answer = await AiMuhandisService.ask(
+        image: picture,
+        mode: 'trend',
+        question: """SCADA/trend rasmini o‘zbek tilida tahlil qiling.
+Ko‘rinayotgan TAG, vaqt, bosim, temperatura, gaz sarfi, RPM va o‘zgarish
+nuqtalarini ko‘rsating. O‘qilmaydigan qiymatlarni to‘qimang.
+Avariya oldidan signal ketma-ketligi faqat vaqtlar aniq bo‘lsa ko‘rsatilsin.
+Texnik sababni taxmin va tasdiqlangan dalillarga ajratib yozing.
+Himoya/interlockni chetlab o‘tishni maslahat bermang.""",
+      );
+      if (!mounted) return;
+      setState(() => aiResult = answer);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => aiResult = 'AI tahlil xatosi: $e');
+    } finally {
+      if (mounted) setState(() => analyzing = false);
+    }
+  }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -2996,6 +3340,7 @@ class _ScadaTrendPageState extends State<ScadaTrendPage> {
     setState(() {
       selectedImage = bytes;
       imageName = image.name;
+      aiResult = '';
     });
   }
 
@@ -3003,6 +3348,7 @@ class _ScadaTrendPageState extends State<ScadaTrendPage> {
     setState(() {
       selectedImage = null;
       imageName = null;
+      aiResult = '';
     });
   }
 
@@ -3061,14 +3407,15 @@ class _ScadaTrendPageState extends State<ScadaTrendPage> {
 
             const SizedBox(height: 16),
 
-            const Card(
+            FilledButton.icon(
+              onPressed: analyzing ? null : _analyzeTrend,
+              icon: const Icon(Icons.analytics),
+              label: Text(analyzing ? 'TAHLIL QILINMOQDA...' : 'TRENDNI AI BILAN TAHLIL'),
+            ),
+            if (aiResult.isNotEmpty) Card(
               child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text(
-                  'SCADA va Trend rasmini AI tahlil qilish '
-                  'API ulanishining oxirgi bosqichida '
-                  'qo‘shiladi.',
-                ),
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(aiResult),
               ),
             ),
           ],
@@ -3081,45 +3428,138 @@ class SignalChainPage extends StatefulWidget {
   const SignalChainPage({super.key});
 
   @override
-  State<SignalChainPage> createState() =>
-      _SignalChainPageState();
+  State<SignalChainPage> createState() => _SignalChainPageState();
+}
+
+class _DocumentedSignalStep {
+  final String name;
+  final String tag;
+  final String details;
+  final String document;
+  final int page;
+  const _DocumentedSignalStep({
+    required this.name,
+    required this.tag,
+    required this.details,
+    required this.document,
+    required this.page,
+  });
 }
 
 class _SignalChainPageState extends State<SignalChainPage> {
   final tagController = TextEditingController();
-
   String result = '';
-String chainDiagram = '';
-  void _checkSignalChain() {
-  if (lastAiSignalAnalysis.isNotEmpty) {
-    setState(() {
-      result = lastAiSignalAnalysis;
-chainDiagram =
-    'AI tahlilidan signal zanjiri tayyorlanmoqda...';
-    });
-    return;
-  }
-    final tag = tagController.text.trim();
+  List<_DocumentedSignalStep> documentedSteps = [];
+  bool checking = false;
 
-    if (tag.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('TAG raqamini kiriting'),
-        ),
-      );
+  /// JSON formatidagi javobni qabul qiladi; hujjat nomi bazada yo‘q bo‘lsa
+  /// yoki sahifa ko‘rsatilmagan bo‘lsa sxemaga qo‘shmaydi.
+  List<_DocumentedSignalStep> _extractSteps(
+    String answer, List<String> knownDocuments,
+  ) {
+    final open = answer.indexOf('{');
+    final close = answer.lastIndexOf('}');
+    if (open < 0 || close <= open) return [];
+    try {
+      final parsed = jsonDecode(answer.substring(open, close + 1));
+      if (parsed is! Map || parsed['steps'] is! List) return [];
+      final allowed = {
+        for (final doc in knownDocuments) doc.trim().toLowerCase(): doc,
+      };
+      final steps = <_DocumentedSignalStep>[];
+      for (final item in parsed['steps'] as List) {
+        if (item is! Map) continue;
+        final name = (item['name'] ?? '').toString().trim();
+        final doc = (item['document'] ?? '').toString().trim();
+        final page = int.tryParse((item['page'] ?? '').toString());
+        if (name.isEmpty || page == null || page < 1) continue;
+        final realDoc = allowed[doc.toLowerCase()];
+        if (realDoc == null) continue;
+        steps.add(_DocumentedSignalStep(
+          name: name,
+          tag: (item['tag'] ?? '').toString().trim(),
+          details: (item['details'] ?? '').toString().trim(),
+          document: realDoc,
+          page: page,
+        ));
+      }
+      return steps;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _checkSignalChain() async {
+    final tag = tagController.text.trim();
+    final picture = SignalImageBridge.imageForCurrentField();
+    final existingAnalysis = SignalImageBridge.analysisForCurrentField().trim();
+    if (picture == null && tag.isEmpty && existingAnalysis.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Avval AI ga savolga rasm yuboring yoki TAG kiriting'),
+      ));
       return;
     }
-
     setState(() {
-      result =
-          'TAG: $tag\n\n'
-          'Signal zanjiri:\n'
-          'Datchik → Kabel → Junction Box → '
-          'PLC/DCS → SCADA\n\n'
-          'Aniq kabel, kanal, modul va signal manbaini '
-          'texnik hujjatlar asosida aniqlash API '
-          'ulanishining oxirgi bosqichida qo‘shiladi.';
+      checking = true;
+      documentedSteps = [];
+      result = 'Signal zanjiri hujjatlardan qidirilmoqda...';
     });
+    try {
+      final docs = await AiMuhandisService.currentDocumentNames();
+      if (docs.isEmpty) {
+        throw StateError('Ushbu kon uchun PDF/hujjat topilmadi. Kon ID va hujjatlarni tekshiring.');
+      }
+      final ranked = AiMuhandisService.rankDocuments(
+        docs, '$tag ${SignalImageBridge.question} $existingAnalysis',
+      );
+      final response = await AiMuhandisService.ask(
+        image: picture,
+        mode: 'chain',
+        question: """SIGNAL ZANJIRI. Foydalanuvchi yuklagan rasmni bevosita tahlil qiling.
+Rasm oldin "AI ga savol" bo‘limida yuklangan; qayta yuklash talab qilinmaydi.
+Operator savoli: ${SignalImageBridge.question}
+Avvalgi AI tahlili (faqat yordamchi, dalil emas): $existingAnalysis
+Qo‘lda kiritilgan TAG: $tag
+Ushbu kon hujjatlari: ${ranked.join('; ')}
+
+Hujjatlardagi P&ID, elektr, KIPiA, I/O listdan datchik, kabel, Junction Box,
+terminal, RIO/I/O, PLC/DCS, SCADA va Alarm/Trip yo‘lini qidiring.
+FAQAT real hujjatdan sahifasi bilan tasdiqlanadigan qadamni kiritish mumkin.
+Uskuna va signal zanjiri to‘liq topilmasa to‘liq qilib ko‘rsatmang.
+Hujjatda yo‘q kabel/terminal/kanal/modul raqamini ASLO taxmin qilmang.
+Javob FAQAT JSON bo‘lsin, shakli:
+{"summary":"o‘zbekcha qisqa xulosa", "steps":[
+ {"name":"Datchik", "tag":"PT-101", "details":"faqat hujjatda bor ma’lumot", "document":"hujjatning ro‘yxatdagi aynan nomi", "page":12}
+]}
+"steps" tartibi manbadagi signal oqimi bo‘yicha. Aniq manba bo‘lmasa [] qaytaring.
+Himoya/interlock/tripni chetlab o‘tish bo‘yicha ko‘rsatma bermang.
+""",
+      );
+      final found = _extractSteps(response, docs);
+      String summary = response;
+      try {
+        final first = response.indexOf('{');
+        final last = response.lastIndexOf('}');
+        if (first >= 0 && last > first) {
+          final decoded = jsonDecode(response.substring(first, last + 1));
+          if (decoded is Map && decoded['summary'] != null) {
+            summary = decoded['summary'].toString();
+          }
+        }
+      } catch (_) {
+        // Eski Edge Function oddiy matn qaytarsa, matnni saqlab qolamiz.
+      }
+      if (!mounted) return;
+      setState(() {
+        result = summary;
+        documentedSteps = found;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => result = 'Signal zanjiri aniqlanmadi: $e');
+    } finally {
+      if (mounted) setState(() => checking = false);
+    }
   }
 
   @override
@@ -3130,52 +3570,86 @@ chainDiagram =
 
   @override
   Widget build(BuildContext context) {
+    final hasOperatorImage = SignalImageBridge.imageForCurrentField() != null;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Signal zanjiri'),
-      ),
+      appBar: AppBar(title: const Text('Signal zanjiri')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          ListTile(
+            leading: Icon(hasOperatorImage ? Icons.image : Icons.image_not_supported),
+            title: Text(hasOperatorImage
+                ? 'AI ga savoldagi rasm tayyor'
+                : 'AI ga savoldan rasm hali olinmagan'),
+            subtitle: const Text('Rasmni qayta yuklash shart emas'),
+          ),
           TextField(
             controller: tagController,
             decoration: const InputDecoration(
-              labelText: 'TAG raqami',
+              labelText: 'TAG (ixtiyoriy)',
               hintText: 'Masalan: PT-101',
               prefixIcon: Icon(Icons.tag),
             ),
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: _checkSignalChain,
+            onPressed: checking ? null : _checkSignalChain,
             icon: const Icon(Icons.account_tree),
-            label: const Text('SIGNAL ZANJIRINI KO‘RISH'),
+            label: Text(checking ? 'QIDIRILMOQDA...' : 'SIGNAL ZANJIRINI KO‘RISH'),
           ),
           if (result.isNotEmpty) ...[
             const SizedBox(height: 20),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-              child: Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    SelectableText(result),
-    if (chainDiagram.isNotEmpty) ...[
-      const SizedBox(height: 16),
-      const Divider(),
-      const Text(
-        'SIGNAL ZANJIRI CHIZMASI',
-        style: TextStyle(fontWeight: FontWeight.bold),
-      ),
-      const SizedBox(height: 10),
-      Text(chainDiagram),
-    ],
-  ],
-),
-
-              ),
-            ),
+            Card(child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SelectableText(result),
+            )),
           ],
+          if (documentedSteps.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('AI ANIQLAGAN HUJJATLI SIGNAL ZANJIRI',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text('AI ko‘rsatgan sahifa havolalari texnik xodim tomonidan tekshirilishi kerak. Ushbu chizma xavfsizlik tizimi uchun tasdiqlangan loyiha emas.'),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                for (var i = 0; i < documentedSteps.length; i++) ...[
+                  if (i > 0) const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Icon(Icons.arrow_forward),
+                  ),
+                  Card(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 220),
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(documentedSteps[i].name,
+                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                          if (documentedSteps[i].tag.isNotEmpty)
+                            Text('TAG: ${documentedSteps[i].tag}'),
+                          if (documentedSteps[i].details.isNotEmpty)
+                            Text(documentedSteps[i].details),
+                          const Divider(),
+                          Text(documentedSteps[i].document,
+                              style: const TextStyle(fontSize: 12)),
+                          Text('Sahifa: ${documentedSteps[i].page}',
+                              style: const TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          ] else if (result.isNotEmpty && !checking)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text('Sahifasi ko‘rsatilgan va shu kon hujjatlariga mos qadamlar topilmadi: taxminiy zanjir chizilmadi.'),
+            ),
         ],
       ),
     );
@@ -3966,6 +4440,7 @@ class UserManagementPage extends StatelessWidget {
             title: 'Operator / Kuzatuvchi',
             permissions: const [
               'Sutkalik monitoringni ko‘rish',
+              'Rasm bilan AI ga savol va Signal zanjiridan foydalanish',
               'Ko‘rsatkichlarni kuzatish',
               'Ma’lumotlarni o‘zgartira olmaydi',
               'Texnik hujjatlar va nosozliklar '

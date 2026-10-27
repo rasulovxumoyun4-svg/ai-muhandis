@@ -1199,7 +1199,7 @@ class AiQuestionPage extends StatefulWidget {
   @override
   State<AiQuestionPage> createState() => _AiQuestionPageState();
 }
-
+String lastAiSignalAnalysis = '';
 class _AiQuestionPageState extends State<AiQuestionPage> {
   final questionController = TextEditingController();
 
@@ -1254,7 +1254,8 @@ Future<void> sendQuestion() async {
     );
 
     if (!mounted) return;
-
+lastAiSignalAnalysis =
+    response.data?['answer']?.toString() ?? '';
     setState(() {
       result = response.data?['answer']?.toString() ??
           'AI javob qaytarmadi';
@@ -3088,8 +3089,16 @@ class _SignalChainPageState extends State<SignalChainPage> {
   final tagController = TextEditingController();
 
   String result = '';
-
+String chainDiagram = '';
   void _checkSignalChain() {
+  if (lastAiSignalAnalysis.isNotEmpty) {
+    setState(() {
+      result = lastAiSignalAnalysis;
+chainDiagram =
+    'AI tahlilidan signal zanjiri tayyorlanmoqda...';
+    });
+    return;
+  }
     final tag = tagController.text.trim();
 
     if (tag.isEmpty) {
@@ -3147,7 +3156,23 @@ class _SignalChainPageState extends State<SignalChainPage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: SelectableText(result),
+              child: Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    SelectableText(result),
+    if (chainDiagram.isNotEmpty) ...[
+      const SizedBox(height: 16),
+      const Divider(),
+      const Text(
+        'SIGNAL ZANJIRI CHIZMASI',
+        style: TextStyle(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 10),
+      Text(chainDiagram),
+    ],
+  ],
+),
+
               ),
             ),
           ],

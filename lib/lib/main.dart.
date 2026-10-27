@@ -1652,6 +1652,13 @@ void initState() {
   super.initState();
   WidgetsBinding.instance.addObserver(this);
   _loadTechnologyData();
+_monitoringRefreshTimer = Timer.periodic(
+  const Duration(minutes: 2),
+  (_) {
+    if (!mounted || _monitoringFetchInProgress) return;
+    _loadTechnologyData();
+  },
+);
 }
 @override
 void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -1678,6 +1685,8 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   }
 
   Future<void> _loadTechnologyData() async {
+if (_monitoringFetchInProgress) return;
+_monitoringFetchInProgress = true;
     if (mounted) {
       setState(() {
         loading = true;
@@ -1754,9 +1763,11 @@ final response =
           ),
         ),
       );
-    }
-  }
-
+    
+} finally {
+  _monitoringFetchInProgress = false;
+}
+}
   List<Map<String, dynamic>> _dataForDate(DateTime date) {
     final wanted = _dateText(date);
 
@@ -2633,6 +2644,8 @@ if (selectedRows.isEmpty)
 
   @override
   void dispose() {
+_monitoringRefreshTimer?.cancel();
+WidgetsBinding.instance.removeObserver(this);
     inletPressureController.dispose();
     inletTempController.dispose();
     outletPressureController.dispose();

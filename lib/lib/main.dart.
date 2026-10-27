@@ -289,8 +289,48 @@ if (code == 'SA_1995') {
   return;
 }
 if (code == 'AD_1969') {
-  _openHome('admin');
-  return;
+  if (fieldId.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Admin uchun Kon ID ni kiriting'),
+      ),
+    );
+    return;
+  }
+
+  try {
+    final fields = await Supabase.instance.client
+        .from('device_assignments')
+        .select('field_id, field_name')
+        .eq('field_id', fieldId)
+        .limit(1);
+
+    if (!mounted) return;
+
+    if (fields.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bunday Kon ID topilmadi'),
+        ),
+      );
+      return;
+    }
+
+    AppSession.fieldName =
+        fields.first['field_name']?.toString();
+
+    await _openHome('admin');
+    return;
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Kon ID tekshirilmadi'),
+      ),
+    );
+    return;
+  }
 }
 if (code != 'SA_1995' &&
     code != 'AD_1969' &&
@@ -640,7 +680,7 @@ onTap: () async {
                 );
               },
             ),
-
+if (!dispatcher)
           _MenuCard(
               icon: Icons.smart_toy,
               title: 'AI ga savol',
@@ -652,6 +692,7 @@ onTap: () async {
                 );
               },
             ),
+if (!dispatcher)
 _MenuCard(
     icon: Icons.monitor_heart,
     title: 'Sutkalik monitoring',
@@ -678,6 +719,7 @@ _MenuCard(
             ),
 
           if (admin)
+
             _MenuCard(
               icon: Icons.warning_amber,
               title: 'Signal va Alarm',
@@ -704,7 +746,7 @@ _MenuCard(
                 );
               },
             ),
-
+if (!dispatcher)
           _MenuCard(
               icon: Icons.account_tree,
               title: 'Signal zanjiri',

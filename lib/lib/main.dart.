@@ -529,7 +529,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<Map<String, dynamic>> dispatcherFields = [];
   bool loadingDispatcherFields = false;
 bool dispatcherUsingOfflineCache = false;
@@ -645,7 +645,7 @@ try {
 @override
 void initState() {
   super.initState();
-
+WidgetsBinding.instance.addObserver(this);
   _restoreDispatcherCache().then((_) {
     if (mounted) {
       _loadDispatcherFields();
@@ -663,8 +663,17 @@ void initState() {
   );
 }
 @override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.resumed &&
+      mounted &&
+      AppSession.role == 'dispatcher') {
+    _loadDispatcherFields();
+  }
+}
+@override
 void dispose() {
   _dispatcherRefreshTimer?.cancel();
+  WidgetsBinding.instance.removeObserver(this);
   super.dispose();
 }
   void _open(BuildContext context, Widget page) {

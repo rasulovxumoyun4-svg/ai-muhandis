@@ -3187,6 +3187,7 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
 String _documentSearchQuery = '';
 List<Map<String, dynamic>> _tagSearchResults = [];
 int _tagSearchRequestId = 0;
+bool _tagSearchLoading = false;
 String _tagSearchError = '';
 List<Map<String, dynamic>> get _filteredDocuments {
   final query = _documentSearchQuery.trim().toLowerCase();

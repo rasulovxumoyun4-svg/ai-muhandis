@@ -3207,6 +3207,7 @@ List<Map<String, dynamic>> get _filteredDocuments {
     setState(() { indexing = true; indexStatus = 'PDF indekslash boshlandi'; });
     var succeeded = 0;
     var failed = 0;
+String indexError = '';
     for (var i = 0; i < pdfFiles.length; i++) {
       if (!mounted) break;
       setState(() => indexStatus = 'PDF ${i + 1}/${pdfFiles.length} indekslanmoqda...');
@@ -3220,14 +3221,25 @@ List<Map<String, dynamic>> get _filteredDocuments {
         if (data is Map && data['indexed'] == true) {
           succeeded++;
         } else {
-          failed++;
-        }
-      } catch (_) { failed++; }
+  failed++;
+  indexError = data == null
+      ? 'Server bo‘sh javob qaytardi'
+      : data.toString();
+}
+      } catch (e) {
+  failed++;
+  indexError = e.toString();
+}
     }
     if (!mounted) return;
     setState(() {
       indexing = false;
-      indexStatus = 'Tayyor: $succeeded PDF. Xato: $failed PDF.';
+indexStatus = 'Tayyor: $succeeded PDF. Xato: $failed PDF.';
+
+if (indexError.isNotEmpty) {
+  indexStatus += '\nXatolik sababi: $indexError';
+}
+      
     });
   }
 
@@ -3457,7 +3469,7 @@ ScaffoldMessenger.of(context).showSnackBar(
     padding: const EdgeInsets.all(8),
     child: TextField(
       decoration: const InputDecoration(
-        hintText: 'TAG yoki hujjat nomini qidirish',
+        hintText: 'Hujjat nomi yoki toifasini qidirish',
         prefixIcon: Icon(Icons.search),
         border: OutlineInputBorder(),
       ),
@@ -3498,7 +3510,16 @@ ScaffoldMessenger.of(context).showSnackBar(
                       if (indexStatus.isNotEmpty) Text(indexStatus),
                     ]),
                   ),
-                  Expanded(child: ListView.builder(
+                  Expanded(
+  child: _filteredDocuments.isEmpty
+      ? Center(
+          child: Text(
+            _documentSearchQuery.trim().isEmpty
+                ? 'Hozircha texnik hujjat yo‘q'
+                : 'Qidiruv bo‘yicha hujjat topilmadi',
+          ),
+        )
+      : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _filteredDocuments.length,
                     itemBuilder: (context, index) {
@@ -3549,10 +3570,12 @@ onTap: () {
                     },
                   )),
                 ])
-          : documents.isEmpty
-              ? const Center(
+          : _filteredDocuments.isEmpty
+              ?  Center(
                   child: Text(
-                    'Hozircha texnik hujjat yo‘q',
+                    _documentSearchQuery.trim().isEmpty
+    ? 'Hozircha texnik hujjat yo‘q'
+    : 'Qidiruv bo‘yicha hujjat topilmadi',
                   ),
                 )
               : ListView.builder(

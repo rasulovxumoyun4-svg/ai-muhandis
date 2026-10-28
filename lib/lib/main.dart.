@@ -3134,6 +3134,12 @@ Future<void> openTechnicalPdf(
 }
 String _documentCategory(String fileName) {
   final name = fileName.toLowerCase();
+if (name.contains('input_output') ||
+    name.contains('input output') ||
+    name.contains('i/o') ||
+    name.contains('hardwired')) {
+  return 'Avtomatika';
+}
 
   if (name.contains('p&id') ||
       name.contains('pid') ||
@@ -3178,7 +3184,21 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
   bool uploading = false;
   bool indexing = false;
   String indexStatus = '';
+String _documentSearchQuery = '';
+List<Map<String, dynamic>> get _filteredDocuments {
+  final query = _documentSearchQuery.trim().toLowerCase();
 
+  if (query.isEmpty) return documents;
+
+  return documents.where((document) {
+    final name =
+        document['File_name']?.toString().toLowerCase() ?? '';
+
+    final category = _documentCategory(name).toLowerCase();
+
+    return name.contains(query) || category.contains(query);
+  }).toList();
+}
   Future<void> _indexExistingDocuments() async {
     if (!AppSession.isAdmin || indexing) return;
     final pdfFiles = documents.where((doc) =>
@@ -3431,6 +3451,24 @@ ScaffoldMessenger.of(context).showSnackBar(
             icon: const Icon(Icons.refresh),
           ),
         ],
+ bottom: PreferredSize(
+  preferredSize: const Size.fromHeight(72),
+  child: Padding(
+    padding: const EdgeInsets.all(8),
+    child: TextField(
+      decoration: const InputDecoration(
+        hintText: 'TAG yoki hujjat nomini qidirish',
+        prefixIcon: Icon(Icons.search),
+        border: OutlineInputBorder(),
+      ),
+      onChanged: (value) {
+        setState(() {
+          _documentSearchQuery = value;
+        });
+      },
+    ),
+  ),
+),
       ),
       floatingActionButton: AppSession.isAdmin
           ? FloatingActionButton.extended(
@@ -3462,18 +3500,32 @@ ScaffoldMessenger.of(context).showSnackBar(
                   ),
                   Expanded(child: ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: documents.length,
+                    itemCount: _filteredDocuments.length,
                     itemBuilder: (context, index) {
-                      final document = documents[index];
+                    final document = _filteredDocuments[index];
 final category = _documentCategory(
   document['File_name']?.toString() ?? '',
 );
 
 final showHeader = index == 0 ||
     _documentCategory(
-      documents[index - 1]['File_name']?.toString() ?? '',
+    _filteredDocuments[index - 1]['File_name']
     ) != category;
-                      return Card(child: ListTile(
+                      return Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    if (showHeader)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+        child: Text(
+          category,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    Card(child: ListTile(
 onTap: () {
   final name = document['File_name']?.toString() ?? '';
   if (name.toLowerCase().endsWith('.pdf')) {
@@ -3491,7 +3543,9 @@ onTap: () {
                           onPressed: () => _deleteDocument(document),
                           icon: const Icon(Icons.delete_outline),
                         ) : null,
-                      ));
+                      )),
+  ],
+);
                     },
                   )),
                 ])
@@ -3503,16 +3557,16 @@ onTap: () {
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: documents.length,
+                  itemCount: _filteredDocuments.length,
                   itemBuilder: (context, index) {
-                    final document = documents[index];
+                  final document = _filteredDocuments[index];
 final category = _documentCategory(
   document['File_name']?.toString() ?? '',
 );
 
 final showHeader = index == 0 ||
     _documentCategory(
-      documents[index - 1]['File_name']?.toString() ?? '',
+      _filteredDocuments[index - 1]['File_name']?.toString() ?? '',
     ) != category;
 
                   

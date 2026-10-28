@@ -3519,15 +3519,17 @@ final showHeader = index == 0 ||
                       return Column(
   crossAxisAlignment: CrossAxisAlignment.start,
   children: [
-    if (showHeader)
-      Padding(
-        padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
-        child: Text(
-          category,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+if (showHeader)
+  Padding(
+    padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+    child: Text(
+      category,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  ),
         
     Card(child: ListTile(
 onTap: () {

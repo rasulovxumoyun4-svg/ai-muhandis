@@ -681,7 +681,7 @@ onTap: () async {
                 );
               },
             ),
-if (!dispatcher)
+if (admin)
           _MenuCard(
               icon: Icons.smart_toy,
               title: 'AI ga savol',

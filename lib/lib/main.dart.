@@ -1649,7 +1649,7 @@ Timer? _monitoringRefreshTimer;
 void initState() {
   super.initState();
   WidgetsBinding.instance.addObserver(this);
-  _loadTechnologyData();
+  _bootstrapMonitoring();
 _monitoringRefreshTimer = Timer.periodic(
   const Duration(minutes: 2),
   (_) {
@@ -1662,6 +1662,69 @@ _monitoringRefreshTimer = Timer.periodic(
 void didChangeAppLifecycleState(AppLifecycleState state) {
   if (state == AppLifecycleState.resumed && mounted) {
     _loadTechnologyData();
+  }
+}
+Future<void> _bootstrapMonitoring() async {
+  await _restoreMonitoringCache();
+
+  if (mounted) {
+    await _loadTechnologyData();
+  }
+}
+
+Future<void> _restoreMonitoringCache() async {
+  final fieldId = AppSession.fieldId?.trim() ?? '';
+  if (fieldId.isEmpty) return;
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('hourly_cache_$fieldId');
+
+    if (raw == null) return;
+
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return;
+
+    final cutoff =
+        DateTime.now().subtract(const Duration(days: 30));
+
+    final valid = <Map<String, dynamic>>[];
+
+    for (final item in decoded) {
+      if (item is! Map) continue;
+
+      final row = Map<String, dynamic>.from(item);
+      final date = DateTime.tryParse(
+        row['created_at']?.toString() ?? '',
+      );
+
+      if (date == null || date.toLocal().isBefore(cutoff)) {
+        continue;
+      }
+
+      if (row['field_id'] != null &&
+          row['field_id'].toString() != fieldId) {
+        continue;
+      }
+
+      valid.add(row);
+    }
+
+    if (!mounted || AppSession.fieldId?.trim() != fieldId) {
+      return;
+    }
+
+    setState(() {
+      hourlyData = valid;
+      loading = false;
+      _hasMonitoringSnapshot = true;
+      _monitoringUsingOfflineCache = true;
+      _monitoringLastSynced = DateTime.tryParse(
+        prefs.getString('hourly_cache_time_$fieldId') ?? '',
+      );
+    });
+  } catch (_) {
+    // Kesh buzilgan bo‘lsa, onlayn yuklash davom etadi.
   }
 }
   String _dateText(DateTime date) {
@@ -1685,11 +1748,11 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
   Future<void> _loadTechnologyData() async {
 if (_monitoringFetchInProgress) return;
 _monitoringFetchInProgress = true;
-    if (mounted) {
-      setState(() {
-        loading = true;
-      });
-    }
+  if (mounted && !_hasMonitoringSnapshot) {
+  setState(() {
+    loading = true;
+  });
+}
 
     try {
       final cutoff = DateTime.now()
@@ -1713,13 +1776,20 @@ final response =
       if (!mounted) return;
 
       setState(() {
-        hourlyData = rows;
-        loading = false;
-      });
+  hourlyData = rows;
+  loading = false;
+  _monitoringUsingOfflineCache = false;
+  _hasMonitoringSnapshot = true;
+  _monitoringLastSynced = DateTime.now();
+});
       final fieldId = AppSession.fieldId;
       if (fieldId != null && fieldId.isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('hourly_cache_$fieldId', jsonEncode(rows));
+await prefs.setString(
+  'hourly_cache_time_$fieldId',
+  DateTime.now().toIso8601String(),
+);
       }
     } catch (e) {
       // Internet uzilganda faqat shu kon uchun avval ko‘rilgan 30 kunlik yozuvlar.
@@ -1740,10 +1810,17 @@ final response =
                   return date != null &&
                       today.difference(date.toLocal()).inDays <= 30;
                 }).toList();
-            if (mounted) setState(() {
-              hourlyData = valid;
-              loading = false;
-            });
+          if (mounted) {
+  setState(() {
+    hourlyData = valid;
+    loading = false;
+    _monitoringUsingOfflineCache = true;
+    _hasMonitoringSnapshot = true;
+    _monitoringLastSynced = DateTime.tryParse(
+      prefs.getString('hourly_cache_time_$fieldId') ?? '',
+    );
+  });
+}
             return;
           } catch (_) { /* Cache buzilgan bo‘lsa onlayn xato chiqadi. */ }
         }
@@ -1765,6 +1842,16 @@ final response =
 } finally {
   _monitoringFetchInProgress = false;
 }
+}
+String _monitoringSyncLabel() {
+  final t = _monitoringLastSynced;
+
+  if (t == null) {
+    return 'Oxirgi yangilanish vaqti noma’lum';
+  }
+
+  return 'Oxirgi onlayn yangilanish: '
+      '${_dateText(t.toLocal())} ${_timeText(t.toLocal())}';
 }
   List<Map<String, dynamic>> _dataForDate(DateTime date) {
     final wanted = _dateText(date);
@@ -2319,6 +2406,22 @@ final sortedFolderDates = dailyFolders.keys.toList()
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+ListTile(
+  leading: Icon(
+    _monitoringUsingOfflineCache
+        ? Icons.cloud_off_outlined
+        : Icons.cloud_done_outlined,
+  ),
+  title: Text(
+    !_hasMonitoringSnapshot
+        ? 'Monitoring ma’lumoti hali olinmagan'
+        : _monitoringUsingOfflineCache
+            ? 'Offline: saqlangan ma’lumotlar'
+            : 'Monitoring ma’lumotlari yangilangan',
+  ),
+  subtitle: Text(_monitoringSyncLabel()),
+),
+const SizedBox(height: 8),
 if (sortedFolderDates.isNotEmpty) ...[
   const Text(
     'Kunlik arxiv',

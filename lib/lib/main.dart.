@@ -532,13 +532,68 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> dispatcherFields = [];
   bool loadingDispatcherFields = false;
+bool dispatcherUsingOfflineCache = false;
+bool _dispatcherFetchInProgress = false;
+DateTime? _dispatcherLastSynced;
+Timer? _dispatcherRefreshTimer;
+String get _dispatcherCacheKey =>
+    'dispatcher_fields_v2_${AppSession.complexCode ?? ''}';
 
-  Future<void> _loadDispatcherFields() async {
-    if (AppSession.role != 'dispatcher') return;
+Future<void> _restoreDispatcherCache() async {
+  final complexCode = AppSession.complexCode?.trim() ?? '';
+
+  if (complexCode.isEmpty ||
+      AppSession.role != 'dispatcher') return;
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_dispatcherCacheKey);
+
+    if (raw == null) return;
+
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return;
+
+    final fields = <String, Map<String, dynamic>>{};
+
+    for (final item in decoded) {
+      if (item is! Map) continue;
+
+      final row = Map<String, dynamic>.from(item);
+      final id = row['field_id']?.toString() ?? '';
+
+      if (id.isNotEmpty) {
+        fields[id] = row;
+      }
+    }
+
+    if (!mounted ||
+        AppSession.complexCode != complexCode) return;
 
     setState(() {
-      loadingDispatcherFields = true;
+      dispatcherFields = fields.values.toList();
+      dispatcherUsingOfflineCache = true;
+      loadingDispatcherFields = false;
+      _dispatcherLastSynced = DateTime.tryParse(
+        prefs.getString('${_dispatcherCacheKey}_time') ?? '',
+      );
     });
+  } catch (_) {
+    // Kesh buzilgan bo‘lsa, onlayn yuklash davom etadi.
+  }
+}
+  Future<void> _loadDispatcherFields() async {
+
+    if (AppSession.role != 'dispatcher' ||
+    _dispatcherFetchInProgress) return;
+
+_dispatcherFetchInProgress = true;
+
+    if (mounted && dispatcherFields.isEmpty) {
+  setState(() {
+    loadingDispatcherFields = true;
+  });
+}
 
     try {
       final response = await Supabase.instance.client
@@ -555,22 +610,63 @@ class _HomePageState extends State<HomePage> {
           if (key.isNotEmpty) unique[key] = row;
         }
         dispatcherFields = unique.values.toList();
-        loadingDispatcherFields = false;
-      });
+loadingDispatcherFields = false;
+dispatcherUsingOfflineCache = false;
+_dispatcherLastSynced = DateTime.now();
+});
+
+try {
+  final prefs = await SharedPreferences.getInstance();
+
+  await prefs.setString(
+    _dispatcherCacheKey,
+    jsonEncode(dispatcherFields),
+  );
+
+  await prefs.setString(
+    '${_dispatcherCacheKey}_time',
+    _dispatcherLastSynced!.toIso8601String(),
+  );
+} catch (_) {
+  // Kesh saqlanmasa ham onlayn ma'lumot saqlanib qoladi.
+}
     } catch (e) {
-      if (!mounted) return;
+  if (!mounted) return;
 
-      setState(() {
-        loadingDispatcherFields = false;
-      });
+  setState(() {
+    loadingDispatcherFields = false;
+    dispatcherUsingOfflineCache = dispatcherFields.isNotEmpty;
+  });
+} finally {
+  _dispatcherFetchInProgress = false;
+}
+  }
+
+@override
+void initState() {
+  super.initState();
+
+  _restoreDispatcherCache().then((_) {
+    if (mounted) {
+      _loadDispatcherFields();
     }
-  }
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    _loadDispatcherFields();
-  }
+  _dispatcherRefreshTimer = Timer.periodic(
+    const Duration(minutes: 2),
+    (_) {
+      if (!mounted || AppSession.role != 'dispatcher') {
+        return;
+      }
+      _loadDispatcherFields();
+    },
+  );
+}
+@override
+void dispose() {
+  _dispatcherRefreshTimer?.cancel();
+  super.dispose();
+}
   void _open(BuildContext context, Widget page) {
     Navigator.push(
       context,
@@ -616,6 +712,14 @@ final dispatcher = AppSession.role == 'dispatcher';
         padding: const EdgeInsets.all(16),
         children: [
 if (dispatcher) ...[
+if (dispatcherUsingOfflineCache)
+  const ListTile(
+    leading: Icon(Icons.cloud_off_outlined),
+    title: Text('Offline: saqlangan konlar ro‘yxati'),
+    subtitle: Text(
+      'Internet tiklanganda ma’lumotlar yangilanadi.',
+    ),
+  ),
   Card(
     child: ListTile(
 

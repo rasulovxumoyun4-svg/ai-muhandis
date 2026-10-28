@@ -3185,6 +3185,9 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
   bool indexing = false;
   String indexStatus = '';
 String _documentSearchQuery = '';
+List<Map<String, dynamic>> _tagSearchResults = [];
+int _tagSearchRequestId = 0;
+String _tagSearchError = '';
 List<Map<String, dynamic>> get _filteredDocuments {
   final query = _documentSearchQuery.trim().toLowerCase();
 
@@ -3198,6 +3201,63 @@ List<Map<String, dynamic>> get _filteredDocuments {
 
     return name.contains(query) || category.contains(query);
   }).toList();
+}
+Future<void> _searchTag(String tag) async {
+final requestId = ++_tagSearchRequestId;
+  final fieldId = AppSession.fieldId?.trim() ?? '';
+
+  if (tag.trim().isEmpty || fieldId.isEmpty) {
+    setState(() {
+      _tagSearchResults = [];
+      _tagSearchError = fieldId.isEmpty
+          ? 'Avval konni tanlang'
+          : '';
+    });
+    return;
+  }
+
+  setState(() {
+    _tagSearchLoading = true;
+    _tagSearchError = '';
+    _tagSearchResults = [];
+  });
+
+  try {
+    final response = await supabase.functions.invoke(
+      'ai_diagnose',
+      body: {
+        'action': 'search_tag',
+        'field_id': fieldId,
+        'tag': tag.trim(),
+      },
+    );
+
+    final data = response.data;
+
+    if (data is! Map || data['results'] is! List) {
+      throw Exception(
+        data is Map
+            ? (data['error'] ?? 'Server javobi noto‘g‘ri')
+            : 'Server javobi noto‘g‘ri',
+      );
+    }
+
+    if (!mounted || requestId != _tagSearchRequestId) return;
+
+    setState(() {
+      _tagSearchResults = (data['results'] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      _tagSearchLoading = false;
+    });
+  } catch (e) {
+if (!mounted || requestId != _tagSearchRequestId) return;
+
+    setState(() {
+      _tagSearchLoading = false;
+      _tagSearchError = e.toString();
+    });
+  }
 }
   Future<void> _indexExistingDocuments() async {
     if (!AppSession.isAdmin || indexing) return;
@@ -3468,16 +3528,23 @@ ScaffoldMessenger.of(context).showSnackBar(
   child: Padding(
     padding: const EdgeInsets.all(8),
     child: TextField(
+textInputAction: TextInputAction.search,
+onSubmitted: (value) => _searchTag(value),
       decoration: const InputDecoration(
         hintText: 'Hujjat nomi yoki toifasini qidirish',
         prefixIcon: Icon(Icons.search),
         border: OutlineInputBorder(),
       ),
-      onChanged: (value) {
-        setState(() {
-          _documentSearchQuery = value;
-        });
-      },
+    onChanged: (value) {
+  ++_tagSearchRequestId;
+
+  setState(() {
+    _documentSearchQuery = value;
+    _tagSearchResults = [];
+    _tagSearchError = '';
+    _tagSearchLoading = false;
+  });
+},
     ),
   ),
 ),
@@ -3508,6 +3575,44 @@ ScaffoldMessenger.of(context).showSnackBar(
                             'MAVJUD PDFLARNI AI INDEKSLASH'),
                       ),
                       if (indexStatus.isNotEmpty) Text(indexStatus),
+if (_tagSearchLoading)
+  const LinearProgressIndicator(),
+
+if (_tagSearchError.isNotEmpty)
+  Text(
+    _tagSearchError,
+    style: TextStyle(
+      color: Theme.of(context).colorScheme.error,
+    ),
+  ),
+
+if (_tagSearchResults.isNotEmpty)
+  SizedBox(
+    height: 180,
+    child: ListView.builder(
+      itemCount: _tagSearchResults.length,
+      itemBuilder: (context, index) {
+        final item = _tagSearchResults[index];
+        final name = item['document']?.toString() ?? '';
+
+        return ListTile(
+          leading: const Icon(Icons.picture_as_pdf),
+          title: Text(name),
+          subtitle: Text(
+            item['tag'] == null
+                ? 'Fayl nomi bo‘yicha topildi'
+                : 'TAG: ${item['tag']}',
+          ),
+          onTap: name.toLowerCase().endsWith('.pdf')
+              ? () => openTechnicalPdf(
+                    context,
+                    fileName: name,
+                  )
+              : null,
+        );
+      },
+    ),
+  ),
                     ]),
                   ),
                   Expanded(

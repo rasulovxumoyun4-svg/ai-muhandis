@@ -3066,7 +3066,72 @@ class PdfUploadPage extends StatefulWidget {
   @override
   State<PdfUploadPage> createState() => _PdfUploadPageState();
 }
+Future<void> openTechnicalPdf(
+  BuildContext context, {
+  required String fileName,
+  int? page,
+}) async {
+  try {
+    final fieldId = AppSession.fieldId?.trim() ?? '';
 
+    if (fieldId.isEmpty) {
+      throw StateError('Kon ID tanlanmagan');
+    }
+
+    if (!fileName.toLowerCase().endsWith('.pdf')) {
+      throw StateError('Bu fayl PDF emas');
+    }
+
+    final docs = await Supabase.instance.client
+        .from('Documents')
+        .select('Storage_path')
+        .eq('field_id', fieldId)
+        .eq('File_name', fileName)
+        .limit(2);
+
+    if (docs.length != 1) {
+      throw StateError(
+        'Hujjat topilmadi yoki bir xil nomli hujjatlar bor',
+      );
+    }
+
+    final path = docs.first['Storage_path']?.toString() ?? '';
+    if (path.isEmpty) {
+      throw StateError('PDF manzili topilmadi');
+    }
+
+    final bytes = await Supabase.instance.client.storage
+        .from('technical-documents')
+        .download(path);
+
+    if (!context.mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text(fileName)),
+          body: PdfPreview(
+            build: (_) async => bytes,
+            pages: page != null && page > 0
+                ? [page - 1]
+                : null,
+            allowPrinting: false,
+            allowSharing: false,
+            canChangePageFormat: false,
+            canChangeOrientation: false,
+          ),
+        ),
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('PDF ochilmadi: $e')),
+    );
+  }
+}
 class _PdfUploadPageState extends State<PdfUploadPage> {
   final supabase = Supabase.instance.client;
 
@@ -3349,6 +3414,12 @@ ScaffoldMessenger.of(context).showSnackBar(
                     itemBuilder: (context, index) {
                       final document = documents[index];
                       return Card(child: ListTile(
+onTap: () {
+  final name = document['File_name']?.toString() ?? '';
+  if (name.toLowerCase().endsWith('.pdf')) {
+    openTechnicalPdf(context, fileName: name);
+  }
+},
                         leading: const Icon(Icons.description),
                         title: Text(document['File_name']?.toString() ?? 'Hujjat'),
                         subtitle: const Text('Texnik hujjatlar bazasi'),
@@ -3374,6 +3445,12 @@ ScaffoldMessenger.of(context).showSnackBar(
 
                     return Card(
                       child: ListTile(
+onTap: () {
+  final name = document['File_name']?.toString() ?? '';
+  if (name.toLowerCase().endsWith('.pdf')) {
+    openTechnicalPdf(context, fileName: name);
+  }
+},
                         leading: const Icon(
                           Icons.description,
                         ),
@@ -3914,10 +3991,18 @@ Himoya/interlock/tripni chetlab o‘tish bo‘yicha ko‘rsatma bermang.
                           if (documentedSteps[i].details.isNotEmpty)
                             Text(documentedSteps[i].details),
                           const Divider(),
-                          Text(documentedSteps[i].document,
-                              style: const TextStyle(fontSize: 12)),
-                          Text('Sahifa: ${documentedSteps[i].page}',
-                              style: const TextStyle(fontSize: 12)),
+                          TextButton.icon(
+  onPressed: () => openTechnicalPdf(
+    context,
+    fileName: documentedSteps[i].document,
+    page: documentedSteps[i].page,
+  ),
+  icon: const Icon(Icons.picture_as_pdf),
+  label: Text(
+    '${documentedSteps[i].document}\n'
+    'Sahifa: ${documentedSteps[i].page} — OCHISH',
+  ),
+),
                         ],
                       ),
                     ),

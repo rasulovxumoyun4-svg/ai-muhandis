@@ -860,7 +860,7 @@ _MenuCard(
                 );
               },
             ),
-if (!dispatcher)
+if (admin)
           _MenuCard(
               icon: Icons.account_tree,
               title: 'Signal zanjiri',
@@ -3132,6 +3132,44 @@ Future<void> openTechnicalPdf(
     );
   }
 }
+String _documentCategory(String fileName) {
+  final name = fileName.toLowerCase();
+
+  if (name.contains('p&id') ||
+      name.contains('pid') ||
+      name.contains('p_id')) {
+    return 'P&ID';
+  }
+
+  if (name.contains('kip') ||
+      name.contains('кип') ||
+      name.contains('instrument')) {
+    return 'KIPiA';
+  }
+
+  if (name.contains('elektr') ||
+      name.contains('электр')) {
+    return 'Elektr';
+  }
+
+  if (name.contains('avtomat') ||
+      name.contains('plc') ||
+      name.contains('scada')) {
+    return 'Avtomatika';
+  }
+
+  if (name.contains('pasport') ||
+      name.contains('паспорт')) {
+    return 'Pasport';
+  }
+
+  if (name.contains('reglament') ||
+      name.contains('регламент')) {
+    return 'Reglament';
+  }
+
+  return 'Boshqa hujjatlar';
+}
 class _PdfUploadPageState extends State<PdfUploadPage> {
   final supabase = Supabase.instance.client;
 
@@ -3190,7 +3228,21 @@ class _PdfUploadPageState extends State<PdfUploadPage> {
       if (!mounted) return;
 
       setState(() {
-        documents = List<Map<String, dynamic>>.from(response);
+      documents = List<Map<String, dynamic>>.from(response)
+  ..sort((a, b) {
+    final categoryA = _documentCategory(
+      a['File_name']?.toString() ?? '',
+    );
+    final categoryB = _documentCategory(
+      b['File_name']?.toString() ?? '',
+    );
+
+    final result = categoryA.compareTo(categoryB);
+    if (result != 0) return result;
+
+    return (a['File_name']?.toString() ?? '')
+        .compareTo(b['File_name']?.toString() ?? '');
+  });
         loading = false;
       });
     } catch (e) {
@@ -3413,6 +3465,14 @@ ScaffoldMessenger.of(context).showSnackBar(
                     itemCount: documents.length,
                     itemBuilder: (context, index) {
                       final document = documents[index];
+final category = _documentCategory(
+  document['File_name']?.toString() ?? '',
+);
+
+final showHeader = index == 0 ||
+    _documentCategory(
+      documents[index - 1]['File_name']?.toString() ?? '',
+    ) != category;
                       return Card(child: ListTile(
 onTap: () {
   final name = document['File_name']?.toString() ?? '';
@@ -3422,7 +3482,11 @@ onTap: () {
 },
                         leading: const Icon(Icons.description),
                         title: Text(document['File_name']?.toString() ?? 'Hujjat'),
-                        subtitle: const Text('Texnik hujjatlar bazasi'),
+                        subtitle: Text(
+  _documentCategory(
+    document['File_name']?.toString() ?? '',
+  ),
+),
                         trailing: AppSession.isSuperAdmin ? IconButton(
                           onPressed: () => _deleteDocument(document),
                           icon: const Icon(Icons.delete_outline),
@@ -3442,9 +3506,30 @@ onTap: () {
                   itemCount: documents.length,
                   itemBuilder: (context, index) {
                     final document = documents[index];
+final category = _documentCategory(
+  document['File_name']?.toString() ?? '',
+);
 
-                    return Card(
-                      child: ListTile(
+final showHeader = index == 0 ||
+    _documentCategory(
+      documents[index - 1]['File_name']?.toString() ?? '',
+    ) != category;
+
+                  
+                      return Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    if (showHeader)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+        child: Text(
+          category,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        
+    Card(child: ListTile(
 onTap: () {
   final name = document['File_name']?.toString() ?? '';
   if (name.toLowerCase().endsWith('.pdf')) {
@@ -3459,9 +3544,11 @@ onTap: () {
                                   ?.toString() ??
                               'Hujjat',
                         ),
-                        subtitle: const Text(
-                          'Texnik hujjatlar bazasi',
-                        ),
+                        subtitle: Text(
+  _documentCategory(
+    document['File_name']?.toString() ?? '',
+  ),
+),
                         trailing:
                             AppSession.isSuperAdmin
                                 ? IconButton(
@@ -3476,7 +3563,9 @@ onTap: () {
                                   )
                                 : null,
                       ),
-                    );
+                    ),
+],
+);
                   },
                 ),
     );

@@ -3381,8 +3381,8 @@ if (indexError.isNotEmpty) {
   });
 
   try {
-    final safeName = file.name.replaceAll(' ', '_');
-
+    
+final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
     final storagePath =
         '${DateTime.now().millisecondsSinceEpoch}_$safeName';
 

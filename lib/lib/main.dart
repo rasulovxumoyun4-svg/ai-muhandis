@@ -1,0 +1,5621 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AppSession {
+  static String role = 'operator';
+static String? fieldId;
+static String? fieldName;
+static String? complexId;
+static String? complexName;
+static String? complexCode;
+static String? deviceId;
+  static bool get isSuperAdmin => role == 'super_admin';
+  static bool get isAdmin =>
+      role == 'admin' || role == 'super_admin';
+  static bool get isOperator => role == 'operator';
+
+  static String get roleLabel {
+    switch (role) {
+      case 'super_admin':
+        return 'Super Admin';
+      case 'admin':
+        return 'Admin';
+case 'dispatcher':
+  return 'Dispatcher';
+      default:
+        return 'Operator';
+    }
+  }
+}
+
+/// Xotirada saqlanadigan so‘nggi operator rasmi.
+/// Rasm Supabase bazasiga yoki telefondagi doimiy xotiraga bu yerda yozilmaydi.
+class SignalImageBridge {
+  static Uint8List? image;
+  static String? fieldId;
+  static String question = '';
+  static String analysis = '';
+
+  static void remember(Uint8List bytes, String questionText) {
+    image = Uint8List.fromList(bytes);
+    fieldId = AppSession.fieldId;
+    question = questionText;
+    analysis = '';
+  }
+
+  static void rememberAnswer(String questionText, String answer) {
+    if (fieldId != AppSession.fieldId) {
+      image = null;
+      fieldId = AppSession.fieldId;
+    }
+    question = questionText;
+    analysis = answer;
+  }
+
+  static String analysisForCurrentField() {
+    return fieldId == AppSession.fieldId ? analysis : '';
+  }
+
+  static Uint8List? imageForCurrentField() {
+    return fieldId == AppSession.fieldId ? image : null;
+  }
+
+  static void clear() {
+    image = null;
+    question = '';
+    analysis = '';
+    fieldId = null;
+  }
+}
+
+/// Mavjud `ai_diagnose` Edge Function bilan bir xil aloqa usuli.
+/// Hujjatlar ro‘yxati yordamchi ma’lumot; matn/sahifalarni server tekshirishi shart.
+class AiMuhandisService {
+  static Future<String> ask({
+    required String question,
+    Uint8List? image,
+    String mode = 'question',
+  }) async {
+    final response = await Supabase.instance.client.functions.invoke(
+      'ai_diagnose',
+      body: {
+        'question': question,
+        'mode': mode,
+        'image': image == null ? null : base64Encode(image),
+        'field_id': AppSession.fieldId ?? '',
+      },
+    );
+    final data = response.data;
+    if (data is Map) {
+      if (data['error'] != null) {
+        throw StateError(data['error'].toString());
+      }
+      final answer = data['answer'];
+      if (answer != null && answer.toString().trim().isNotEmpty) {
+        return answer.toString();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data;
+    throw StateError('AI javobi olinmadi');
+  }
+
+  static Future<List<String>> currentDocumentNames() async {
+    final fieldId = AppSession.fieldId?.trim() ?? '';
+    if (fieldId.isEmpty) return <String>[];
+    final rows = await Supabase.instance.client
+        .from('Documents')
+        .select('File_name')
+        .eq('field_id', fieldId);
+    return (rows as List)
+        .map((item) => item['File_name']?.toString().trim() ?? '')
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  /// Fayl nomi / TAG bo‘yicha taxminiy reyting. Aniq sahifa qidiruvini
+  /// Edge Function bajarishi kerak; bu qidiruv uni almashtirmaydi.
+  static List<String> rankDocuments(List<String> names, String query) {
+    final terms = query.toLowerCase()
+        .split(RegExp(r'[^a-z0-9а-яё_-]+'))
+        .where((word) => word.length >= 3)
+        .toSet();
+    final ranked = names.toList()
+      ..sort((a, b) {
+        int score(String name) {
+          final lower = name.toLowerCase();
+          return terms.where((term) => lower.contains(term)).length;
+        }
+        return score(b).compareTo(score(a));
+      });
+    return ranked;
+  }
+}
+
+ Future<void> loadDeviceIdentity() async {
+  final prefs = await SharedPreferences.getInstance();
+
+  String? deviceId = prefs.getString('device_id');
+
+  if (deviceId == null || deviceId.isEmpty) {
+    deviceId = 'DEV-${DateTime.now().millisecondsSinceEpoch}';
+    await prefs.setString('device_id', deviceId);
+  }
+
+  AppSession.deviceId = deviceId;
+
+  try {
+    final response = await Supabase.instance.client
+        .from('device_assignments')
+        .select('field_name')
+        .eq('device_id', deviceId)
+        .maybeSingle();
+
+    if (response != null) {
+      final fieldName = response['field_name']?.toString();
+
+      if (fieldName != null && fieldName.isNotEmpty) {
+        AppSession.fieldName = fieldName;
+        await prefs.setString('field_name', fieldName);
+      }
+    } else {
+      AppSession.fieldName = prefs.getString('field_name');
+    }
+  } catch (_) {
+    AppSession.fieldName = prefs.getString('field_name');
+  }
+}
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'https://wuyfzsbrlicsklhizpeo.supabase.co',
+    anonKey:
+        'sb_publishable_sWBh1iSIFp9e7TC0eGF4tA_lhXL3iZ9',
+  );
+await loadDeviceIdentity();
+  runApp(const AiMuhandisApp());
+}
+
+class AiMuhandisApp extends StatelessWidget {
+  const AiMuhandisApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'AI Muhandis',
+      theme: ThemeData(
+        colorSchemeSeed: Colors.blue,
+        useMaterial3: true,
+        inputDecorationTheme: const InputDecorationTheme(
+          border: OutlineInputBorder(),
+        ),
+      ),
+      home: const AccessPage(),
+    );
+  }
+}
+
+class AccessPage extends StatefulWidget {
+  const AccessPage({super.key});
+
+  @override
+  State<AccessPage> createState() => _AccessPageState();
+}
+
+class _AccessPageState extends State<AccessPage> {
+  final TextEditingController codeController =
+      TextEditingController();
+final TextEditingController fieldIdController =
+    TextEditingController();
+bool _authBusy = false;
+@override
+void initState() {
+  super.initState();
+  _loadSavedCode();
+}
+
+Future<void> _loadSavedCode() async {
+  final prefs = await SharedPreferences.getInstance();
+  // Erase legacy stored access codes instead of auto-filling them.
+  await prefs.remove('access_code');
+final savedFieldId = prefs.getString('field_id');
+if (savedFieldId != null && mounted) {
+  setState(() {
+    fieldIdController.text = savedFieldId;
+  });
+}
+}
+
+  Future<void> _openHome(String role) async {
+    final auth = Supabase.instance.client.auth;
+    if (role == 'super_admin') {
+      if (auth.currentSession == null ||
+          auth.currentUser?.appMetadata['role'] != 'super_admin') {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Super Admin uchun email va parol orqali kiring'),
+        ));
+        return;
+      }
+    } else if (auth.currentSession != null) {
+      // An elevated Auth session must not leak into other local roles.
+      try {
+        await auth.signOut();
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Oldingi sessiyadan chiqishda xato. Qayta urinib ko‘ring.'),
+        ));
+        return;
+      }
+    }
+
+    AppSession.role = role;
+    AppSession.fieldId = fieldIdController.text.trim();
+    final prefs = await SharedPreferences.getInstance();
+    // Access codes are secrets, not preferences: never store them locally.
+    await prefs.remove('access_code');
+    await prefs.setString('field_id', fieldIdController.text.trim());
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const HomePage()),
+    );
+  }
+
+  Future<void> _loginSuperAdminWithEmail() async {
+    if (_authBusy) return;
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final login = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Super Admin — xavfsiz kirish'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('Supabase Authentication hisobingiz bilan kiring.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: emailController,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              decoration: const InputDecoration(labelText: 'Email'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(labelText: 'Parol'),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('BEKOR QILISH'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, {
+              'email': emailController.text.trim(),
+              'password': passwordController.text,
+            }),
+            child: const Text('KIRISH'),
+          ),
+        ],
+      ),
+    );
+    emailController.dispose();
+    passwordController.dispose();
+    if (login == null || !mounted) return;
+    final email = login['email'] ?? '';
+    final password = login['password'] ?? '';
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Email va parolni kiriting'),
+      ));
+      return;
+    }
+    setState(() => _authBusy = true);
+    try {
+      final auth = Supabase.instance.client.auth;
+      // Do not depend on the version-specific signInWithPassword return type.
+      await auth.signInWithPassword(email: email, password: password);
+      if (auth.currentSession == null ||
+          auth.currentUser?.appMetadata['role'] != 'super_admin') {
+        await auth.signOut();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Bu hisobga Super Admin huquqi berilmagan'),
+        ));
+        return;
+      }
+      if (!mounted) return;
+      await _openHome('super_admin');
+    } on AuthException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Email yoki parol xato, yoxud hisobga kirish bloklangan'),
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Supabase Auth bilan bog‘lanishda xato'),
+      ));
+    } finally {
+      if (mounted) setState(() => _authBusy = false);
+    }
+  }
+
+Future<void> _loginAsDispatcher() async {
+  final code = codeController.text.trim();
+
+  final complex = await Supabase.instance.client
+      .from('Complexes')
+      .select('id, name, code, dispatcher_code')
+      .eq('dispatcher_code', code)
+      .maybeSingle();
+
+  if (complex == null) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Dispatcher kodi noto‘g‘ri'),
+      ),
+    );
+    return;
+  }
+
+  AppSession.complexId = complex['id']?.toString();
+  AppSession.complexName = complex['name']?.toString();
+  AppSession.complexCode = complex['code']?.toString();
+
+  _openHome('dispatcher');
+}
+Future<void> _loginWithCode() async {
+    final code = codeController.text.trim();
+final fieldId = fieldIdController.text.trim();
+if (code == 'SA_1995') {
+  await _loginSuperAdminWithEmail();
+  return;
+}
+if (code == 'AD_1969') {
+  if (fieldId.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Admin uchun Kon ID ni kiriting'),
+      ),
+    );
+    return;
+  }
+
+  try {
+    final fields = await Supabase.instance.client
+        .from('device_assignments')
+        .select('field_id, field_name')
+        .eq('field_id', fieldId)
+        .limit(1);
+
+    if (!mounted) return;
+
+    if (fields.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bunday Kon ID topilmadi'),
+        ),
+      );
+      return;
+    }
+
+    AppSession.fieldName =
+        fields.first['field_name']?.toString();
+
+    await _openHome('admin');
+    return;
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Kon ID tekshirilmadi'),
+      ),
+    );
+    return;
+  }
+}
+if (code != 'SA_1995' &&
+    code != 'AD_1969' &&
+    !code.startsWith('D') &&
+    fieldId.isEmpty) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Kon ID ni kiriting'),
+    ),
+  );
+  return;
+}
+final complex = await Supabase.instance.client
+  .from('Complexes')  
+    .select('id, name, code, dispatcher_code')
+    .eq('dispatcher_code', code)
+    .maybeSingle();
+
+if (complex != null) {
+  AppSession.complexId = complex['id']?.toString();
+  AppSession.complexName = complex['name']?.toString();
+AppSession.complexCode = complex['code']?.toString();
+  _openHome('dispatcher');
+  return;
+}
+if (code != 'SA_1995') {
+  final field = await Supabase.instance.client
+      .from('device_assignments')
+      .select('field_id, field_name')
+      .eq('field_id', fieldId)
+      .maybeSingle();
+
+  if (field == null) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bunday Kon ID topilmadi'),
+      ),
+    );
+    return;
+  }
+AppSession.fieldId = fieldId;
+AppSession.fieldName = field['field_name']?.toString();
+}
+
+    if (code == 'SA_1995') {
+      await _loginSuperAdminWithEmail();
+      return;
+    }
+
+    if (code == 'AD_1969') {
+      _openHome('admin');
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Kirish kodi noto‘g‘ri'),
+      ),
+    );
+  }
+Future<void> _loginAsOperator() async {
+  final fieldId = fieldIdController.text.trim();
+
+  if (fieldId.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Kon ID ni kiriting'),
+      ),
+    );
+    return;
+  }
+
+  final field = await Supabase.instance.client
+      .from('device_assignments')
+    .select('field_id, field_name')
+      .eq('field_id', fieldId)
+      .maybeSingle();
+
+  if (field == null) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Bunday Kon ID topilmadi'),
+      ),
+    );
+    return;
+  }
+AppSession.fieldId = fieldId;
+AppSession.fieldName = field['field_name']?.toString();
+await _openHome('operator');
+
+}
+  @override
+void dispose() {
+  codeController.dispose();
+  fieldIdController.dispose();
+  super.dispose();
+}
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI Muhandis'),
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.engineering,
+              size: 80,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'AI Muhandis',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 30),
+            TextField(
+              controller: codeController,
+              obscureText: true,
+              keyboardType: TextInputType.text,
+              decoration: const InputDecoration(
+                labelText: 'Admin kirish kodi',
+                hintText: 'Kodni kiriting',
+                prefixIcon: Icon(Icons.lock),
+              ),
+            ),
+const SizedBox(height: 15),
+TextField(
+  controller: fieldIdController,
+  keyboardType: TextInputType.number,
+  decoration: const InputDecoration(
+    labelText: 'Kon ID',
+    hintText: 'Masalan: 100',
+    prefixIcon: Icon(Icons.location_on),
+  ),
+),
+            const SizedBox(height: 15),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _authBusy ? null : _loginWithCode,
+                icon: _authBusy
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.login),
+                label: Text(_authBusy ? 'TEKSHIRILMOQDA...' : 'KIRISH'),
+              ),
+            ),
+SizedBox(
+  width: double.infinity,
+  child: OutlinedButton.icon(
+    onPressed: _loginAsDispatcher,
+    icon: const Icon(Icons.monitor),
+    label: const Text('DISPATCHER SIFATIDA KIRISH'),
+  ),
+),
+const SizedBox(height: 12),
+
+            SizedBox(            
+width: double.infinity,
+
+              child: OutlinedButton.icon(
+                onPressed: () async {
+  await _loginAsOperator();
+},
+                icon: const Icon(Icons.visibility),
+                label: const Text(
+                  'KUZATUVCHI SIFATIDA KIRISH',
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Operator kuzatuvchi sifatida ma’lumotlarni '
+              'ko‘radi, lekin o‘zgartira olmaydi.',
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  List<Map<String, dynamic>> dispatcherFields = [];
+  bool loadingDispatcherFields = false;
+bool dispatcherUsingOfflineCache = false;
+bool _dispatcherFetchInProgress = false;
+DateTime? _dispatcherLastSynced;
+Timer? _dispatcherRefreshTimer;
+String get _dispatcherCacheKey =>
+    'dispatcher_fields_v2_${AppSession.complexCode ?? ''}';
+
+Future<void> _restoreDispatcherCache() async {
+  final complexCode = AppSession.complexCode?.trim() ?? '';
+
+  if (complexCode.isEmpty ||
+      AppSession.role != 'dispatcher') return;
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_dispatcherCacheKey);
+
+    if (raw == null) return;
+
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return;
+
+    final fields = <String, Map<String, dynamic>>{};
+
+    for (final item in decoded) {
+      if (item is! Map) continue;
+
+      final row = Map<String, dynamic>.from(item);
+      final id = row['field_id']?.toString() ?? '';
+
+      if (id.isNotEmpty) {
+        fields[id] = row;
+      }
+    }
+
+    if (!mounted ||
+        AppSession.complexCode != complexCode) return;
+
+    setState(() {
+      dispatcherFields = fields.values.toList();
+      dispatcherUsingOfflineCache = true;
+      loadingDispatcherFields = false;
+      _dispatcherLastSynced = DateTime.tryParse(
+        prefs.getString('${_dispatcherCacheKey}_time') ?? '',
+      );
+    });
+  } catch (_) {
+    // Kesh buzilgan bo‘lsa, onlayn yuklash davom etadi.
+  }
+}
+  Future<void> _loadDispatcherFields() async {
+
+    if (AppSession.role != 'dispatcher' ||
+    _dispatcherFetchInProgress) return;
+
+_dispatcherFetchInProgress = true;
+
+    if (mounted && dispatcherFields.isEmpty) {
+  setState(() {
+    loadingDispatcherFields = true;
+  });
+}
+
+    try {
+      final response = await Supabase.instance.client
+          .from('device_assignments')
+          .select()
+          .eq('complex_id', AppSession.complexCode ?? '');
+
+      if (!mounted) return;
+
+      setState(() {
+        final unique = <String, Map<String, dynamic>>{};
+        for (final row in List<Map<String, dynamic>>.from(response)) {
+          final key = row['field_id']?.toString() ?? '';
+          if (key.isNotEmpty) unique[key] = row;
+        }
+        dispatcherFields = unique.values.toList();
+loadingDispatcherFields = false;
+dispatcherUsingOfflineCache = false;
+_dispatcherLastSynced = DateTime.now();
+});
+
+try {
+  final prefs = await SharedPreferences.getInstance();
+
+  await prefs.setString(
+    _dispatcherCacheKey,
+    jsonEncode(dispatcherFields),
+  );
+
+  await prefs.setString(
+    '${_dispatcherCacheKey}_time',
+    _dispatcherLastSynced!.toIso8601String(),
+  );
+} catch (_) {
+  // Kesh saqlanmasa ham onlayn ma'lumot saqlanib qoladi.
+}
+    } catch (e) {
+  if (!mounted) return;
+
+  setState(() {
+    loadingDispatcherFields = false;
+    dispatcherUsingOfflineCache = dispatcherFields.isNotEmpty;
+  });
+} finally {
+  _dispatcherFetchInProgress = false;
+}
+  }
+
+@override
+void initState() {
+  super.initState();
+WidgetsBinding.instance.addObserver(this);
+  _restoreDispatcherCache().then((_) {
+    if (mounted) {
+      _loadDispatcherFields();
+    }
+  });
+
+  _dispatcherRefreshTimer = Timer.periodic(
+    const Duration(minutes: 2),
+    (_) {
+      if (!mounted || AppSession.role != 'dispatcher') {
+        return;
+      }
+      _loadDispatcherFields();
+    },
+  );
+}
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.resumed &&
+      mounted &&
+      AppSession.role == 'dispatcher') {
+    _loadDispatcherFields();
+  }
+}
+@override
+void dispose() {
+  _dispatcherRefreshTimer?.cancel();
+  WidgetsBinding.instance.removeObserver(this);
+  super.dispose();
+}
+  void _open(BuildContext context, Widget page) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => page),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final admin = AppSession.isAdmin;
+    final superAdmin = AppSession.isSuperAdmin;
+final dispatcher = AppSession.role == 'dispatcher';
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI Muhandis'),
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(AppSession.roleLabel),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Chiqish',
+            onPressed: () async {
+              // Remove the privileged Auth session before exposing another role.
+              try {
+                if (Supabase.instance.client.auth.currentSession != null) {
+                  await Supabase.instance.client.auth.signOut();
+                }
+              } catch (_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Chiqishda xato, qayta urinib ko‘ring'),
+                ));
+                return;
+              }
+              if (!mounted) return;
+              SignalImageBridge.clear();
+              lastAiSignalAnalysis = '';
+              AppSession.role = 'operator';
+              AppSession.fieldId = null;
+              AppSession.fieldName = null;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const AccessPage()),
+                (route) => false,
+              );
+            },
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+if (dispatcher) ...[
+if (dispatcherUsingOfflineCache)
+  const ListTile(
+    leading: Icon(Icons.cloud_off_outlined),
+    title: Text('Offline: saqlangan konlar ro‘yxati'),
+    subtitle: Text(
+      'Internet tiklanganda ma’lumotlar yangilanadi.',
+    ),
+  ),
+  Card(
+    child: ListTile(
+
+      leading: const Icon(Icons.apartment),
+      title: Text(AppSession.complexName ?? 'Kompleks'),
+      subtitle: const Text('Dispatcher kompleksi'),
+    ),
+  ),
+
+  if (loadingDispatcherFields)
+    const Center(
+      child: CircularProgressIndicator(),
+    )
+  else
+    ...dispatcherFields.map(
+      (field) => Card(
+        child: ListTile(
+onTap: () async {
+  AppSession.fieldId = field['field_id']?.toString();
+  AppSession.fieldName = field['field_name']?.toString();
+  await Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const FieldHomePage()),
+  );
+  if (AppSession.role == 'dispatcher') {
+    AppSession.fieldId = null;
+    AppSession.fieldName = null;
+  }
+},
+
+          leading: const Icon(Icons.location_on),
+          title: Text(
+            field['field_name']?.toString() ?? 'Kon',
+          ),
+          subtitle: Text(
+            'Kon ID: ${field['field_id'] ?? ''}',
+          ),
+        ),
+      ),
+    ),
+],
+          if (superAdmin)
+            _MenuCard(
+              icon: Icons.map_outlined,
+              title: 'Ko‘rish uchun konni tanlash',
+              subtitle: AppSession.fieldName ?? 'Hozir kon tanlanmagan',
+              onTap: () async {
+                await Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const SuperAdminFieldChooserPage(),
+                ));
+                if (mounted) setState(() {});
+              },
+            ),
+          if (admin)
+            _MenuCard(
+              icon: Icons.engineering,
+              title: 'AI Diagnostika',
+              subtitle: 'Uskuna, TAG va Signal/Alarm/Trip',
+              onTap: () {
+                _open(
+                  context,
+                  const DiagnosticPage(),
+                );
+              },
+            ),
+if (admin)
+          _MenuCard(
+              icon: Icons.smart_toy,
+              title: 'AI ga savol',
+              subtitle: 'Rasm va operator savoli',
+              onTap: () {
+                _open(
+                  context,
+                  const AiQuestionPage(),
+                );
+              },
+            ),
+if (!dispatcher)
+_MenuCard(
+    icon: Icons.monitor_heart,
+    title: 'Sutkalik monitoring',
+    subtitle: 'Har soatlik ko‘rsatkichlar va kunlik arxiv',
+    onTap: () {
+      _open(
+        context,
+        const TechnologyPage(),
+      );
+    },
+  ),
+         if (admin)
+            _MenuCard(
+              icon: Icons.folder_copy,
+              title: 'Uskunalar va hujjatlar',
+              subtitle:
+                  'Uskunalar bazasi va texnik hujjatlar',
+              onTap: () {
+                _open(
+                  context,
+                  const EquipmentDocumentsPage(),
+                );
+              },
+            ),
+
+          if (admin)
+
+            _MenuCard(
+              icon: Icons.warning_amber,
+              title: 'Signal va Alarm',
+              subtitle:
+                  'Signal ketma-ketligi va vaqt bo‘yicha tahlil',
+              onTap: () {
+                _open(
+                  context,
+                  const SignalAlarmPage(),
+                );
+              },
+            ),
+
+          if (admin)
+            _MenuCard(
+              icon: Icons.show_chart,
+              title: 'SCADA / Trend',
+              subtitle:
+                  'SCADA va trend ma’lumotlari',
+              onTap: () {
+                _open(
+                  context,
+                  const ScadaTrendPage(),
+                );
+              },
+            ),
+if (admin)
+          _MenuCard(
+              icon: Icons.account_tree,
+              title: 'Signal zanjiri',
+              subtitle:
+                  'TAG, signal manbai va zanjir',
+              onTap: () {
+                _open(
+                  context,
+                  const SignalChainPage(),
+                );
+              },
+            ),
+
+          if (admin)
+            _MenuCard(
+              icon: Icons.history,
+              title: 'Nosozliklar tarixi',
+              subtitle:
+                  'Bajarilgan ishlar va nosozliklar bazasi',
+              onTap: () {
+                _open(
+                  context,
+                  const HistoryPage(),
+                );
+              },
+            ),
+
+if (admin)
+            _MenuCard(
+              icon: Icons.dashboard,
+              title: 'Rahbar paneli',
+              subtitle:
+                  'Nosozliklar va bajarilgan ishlar nazorati',
+              onTap: () {
+                _open(
+                  context,
+                  const ManagerPage(),
+                );
+              },
+            ),
+if (superAdmin)
+  _MenuCard(
+    icon: Icons.location_on,
+    title: 'Konlarni boshqarish',
+    subtitle: 'Kon va qurilma biriktirish',
+    onTap: () {
+      _open(
+        context,
+        const FieldManagementPage(),
+      );
+    },
+  ),
+          if (superAdmin)
+            _MenuCard(
+              icon: Icons.manage_accounts,
+              title: 'Foydalanuvchilar',
+              subtitle:
+                  'Foydalanuvchi va rollarni boshqarish',
+              onTap: () {
+                _open(
+                  context,
+                  const UserManagementPage(),
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+/// Super Admin uchun faqat ko‘rish kontekstini almashtiradi.
+/// Qurilmaning fizik kon biriktirilishini o‘zgartirmaydi.
+class SuperAdminFieldChooserPage extends StatefulWidget {
+  const SuperAdminFieldChooserPage({super.key});
+
+  @override
+  State<SuperAdminFieldChooserPage> createState() =>
+      _SuperAdminFieldChooserPageState();
+}
+
+class _SuperAdminFieldChooserPageState
+    extends State<SuperAdminFieldChooserPage> {
+  List<Map<String, dynamic>> fields = [];
+  String? error;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final response = await Supabase.instance.client
+          .from('device_assignments')
+          .select('field_id, field_name');
+      if (!mounted) return;
+      final unique = <String, Map<String, dynamic>>{};
+      for (final field in List<Map<String, dynamic>>.from(response)) {
+        final id = field['field_id']?.toString() ?? '';
+        if (id.isNotEmpty) unique[id] = field;
+      }
+      setState(() { fields = unique.values.toList(); loading = false; });
+    } catch (e) {
+      if (mounted) setState(() { error = '$e'; loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Konni tanlash')),
+    body: loading ? const Center(child: CircularProgressIndicator())
+      : error != null ? Center(child: Text('Konlar yuklanmadi: $error'))
+      : ListView.builder(
+          itemCount: fields.length,
+          itemBuilder: (context, index) {
+            final field = fields[index];
+            return ListTile(
+              leading: const Icon(Icons.location_on_outlined),
+              title: Text(field['field_name']?.toString() ?? 'Kon'),
+              subtitle: Text(field['field_id']?.toString() ?? ''),
+              onTap: () {
+                AppSession.fieldId = field['field_id']?.toString();
+                AppSession.fieldName = field['field_name']?.toString();
+                Navigator.pop(context);
+              },
+            );
+          },
+        ),
+  );
+}
+
+class FieldManagementPage extends StatefulWidget {
+  const FieldManagementPage({super.key});
+
+  @override
+  State<FieldManagementPage> createState() =>
+      _FieldManagementPageState();
+}
+
+class _FieldManagementPageState extends State<FieldManagementPage> {
+  final supabase = Supabase.instance.client;
+
+  final fieldController = TextEditingController();
+  final fieldIdController = TextEditingController();
+final complexNameController = TextEditingController();
+final complexCodeController = TextEditingController();
+final dispatcherCodeController = TextEditingController();
+ List<Map<String, dynamic>> complexes = [];
+  bool saving = false;
+List<Map<String, dynamic>> assignments = [];
+bool loadingAssignments = true;
+Future<void> _loadComplexes() async {
+  final response = await supabase
+      .from('Complexes')
+      .select()
+      .order('id');
+
+  if (!mounted) return;
+
+  setState(() {
+    complexes = List<Map<String, dynamic>>.from(response);
+  });
+}
+Future<void> _loadAssignments() async {
+  try {
+    final response = await supabase
+        .from('device_assignments')
+        .select()
+        .order('updated_at', ascending: false);
+
+    if (!mounted) return;
+
+    setState(() {
+      assignments =
+          List<Map<String, dynamic>>.from(response);
+      loadingAssignments = false;
+    });
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      loadingAssignments = false;
+    });
+  }
+}
+
+@override
+void initState() {
+  super.initState();
+  _loadAssignments();
+_loadComplexes();
+}
+  @override
+  void dispose() {
+    fieldController.dispose();
+  fieldIdController.dispose();
+complexNameController.dispose();
+complexCodeController.dispose();
+dispatcherCodeController.dispose();
+    super.dispose();
+  }
+Future<void> _saveComplex() async {
+  final name = complexNameController.text.trim();
+  final code = complexCodeController.text.trim();
+final dispatcherCode = dispatcherCodeController.text.trim();
+  if (name.isEmpty) return;
+if (code.isEmpty) return;
+if (dispatcherCode.isEmpty) return;
+  await supabase.from('Complexes').insert({
+    'name': name,
+    'code': code,
+'dispatcher_code': dispatcherCode,
+  });
+
+  complexNameController.clear();
+  complexCodeController.clear();
+dispatcherCodeController.clear();
+  await _loadComplexes();
+}
+Future<void> _deleteComplex(Map<String, dynamic> complex) async {
+  if (!AppSession.isSuperAdmin) return;
+
+  final code = complex['code']?.toString() ?? '';
+  if (code.isEmpty) return;
+final confirmed = await showDialog<bool>(
+  context: context,
+  builder: (context) => AlertDialog(
+    title: const Text('Kompleksni o‘chirish'),
+    content: Text(
+      '${complex['name'] ?? 'Kompleks'} va unga biriktirilgan barcha konlar o‘chirilsinmi?',
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('BEKOR QILISH'),
+      ),
+      TextButton(
+        onPressed: () => Navigator.pop(context, true),
+        child: const Text('O‘CHIRISH'),
+      ),
+    ],
+  ),
+);
+
+if (confirmed != true) return;
+
+  await supabase
+      .from('device_assignments')
+      .delete()
+      .eq('complex_id', code);
+
+  await supabase
+      .from('Complexes')
+      .delete()
+      .eq('code', code);
+
+  await _loadComplexes();
+  await _loadAssignments();
+}
+  Future<void> _saveAssignment() async {
+if (!AppSession.isSuperAdmin) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Kon va ID ni faqat Super Admin belgilaydi'),
+    ),
+  );
+  return;
+}
+    final fieldName = fieldController.text.trim();
+    final fieldId = fieldIdController.text.trim();
+if (fieldName.isEmpty || fieldId.isEmpty) {
+    
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kon nomi, Kon ID, Kompleks nomi va Kompleks kodini kiriting'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      saving = true;
+    });
+
+    try {
+
+      await supabase.from('device_assignments').upsert(
+        {
+          'field_id': fieldId,
+          'field_name': fieldName,
+'complex_id': complexCodeController.text.trim(),
+'complex_name': complexNameController.text.trim(),
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        onConflict: 'field_id',
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kon muvaffaqiyatli saqlandi'),
+        ),
+      );
+
+      fieldController.clear();
+      fieldIdController.clear();
+
+await _loadAssignments();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saqlashda xato: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          saving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Konlarni boshqarish'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+const Text(
+  'Yangi kompleks qo‘shish',
+  style: TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  ),
+),
+const SizedBox(height: 16),
+TextField(
+  controller: complexNameController,
+  decoration: const InputDecoration(
+    labelText: 'Kompleks nomi',
+    border: OutlineInputBorder(),
+  ),
+),
+TextField(
+  controller: complexCodeController,
+  decoration: const InputDecoration(
+    labelText: 'Kompleks kodi',
+    border: OutlineInputBorder(),
+  ),
+),
+const SizedBox(height: 16),
+TextField(
+  controller: dispatcherCodeController,
+  decoration: const InputDecoration(
+    labelText: 'Dispatcher kodi',
+    border: OutlineInputBorder(),
+  ),
+),
+const SizedBox(height: 16),
+
+FilledButton.icon(
+  onPressed: saving ? null : _saveComplex,
+  icon: const Icon(Icons.add_business),
+  label: const Text('KOMPLEKSNI SAQLASH'),
+),
+const SizedBox(height: 24),
+const Text(
+  "Ro'yxatdagi komplekslar",
+  style: TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  ),
+),
+const SizedBox(height: 12),
+
+...complexes.map((complex) => Card(
+  child: ListTile(
+    title: Text(complex['name']?.toString() ?? ''),
+    subtitle: Text('Kompleks kodi: ${complex['code'] ?? ''}'),
+    trailing: AppSession.isSuperAdmin
+        ? IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _deleteComplex(complex),
+          )
+        : null,
+  ),
+)),
+
+const SizedBox(height: 24),
+          const Text(
+            "Yangi kon qo'shish",
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: fieldController,
+            decoration: const InputDecoration(
+              labelText: 'Kon nomi',
+              hintText: 'Masalan: Dengiz yoki Zevarda',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: fieldIdController,
+            decoration: const InputDecoration(
+              labelText: 'Kon ID',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+DropdownButtonFormField<String>(
+  decoration: const InputDecoration(
+    labelText: 'Kompleksni tanlang',
+    border: OutlineInputBorder(),
+  ),
+  items: complexes.map((complex) {
+    return DropdownMenuItem<String>(
+      value: complex['code']?.toString(),
+      child: Text(complex['name']?.toString() ?? ''),
+    );
+  }).toList(),
+  onChanged: (value) {
+    final complex = complexes.firstWhere(
+      (item) => item['code']?.toString() == value,
+    );
+    complexNameController.text = complex['name']?.toString() ?? '';
+    complexCodeController.text = complex['code']?.toString() ?? '';
+    dispatcherCodeController.text =
+        complex['dispatcher_code']?.toString() ?? '';
+  },
+),
+
+const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: saving ? null : _saveAssignment,
+            icon: const Icon(Icons.save),
+            label: Text(
+              saving ? 'SAQLANMOQDA...' : 'KONNI SAQLASH',
+            ),
+          ),
+const SizedBox(height: 24),
+
+const Text(
+  "Ro'yxatdagi konlar",
+  style: TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  ),
+),
+
+const SizedBox(height: 12),
+
+if (loadingAssignments)
+  const Center(
+    child: CircularProgressIndicator(),
+  )
+else if (assignments.isEmpty)
+  const Card(
+    child: Padding(
+      padding: EdgeInsets.all(16),
+      child: Text("Hozircha kon qo'shilmagan"),
+    ),
+  )
+else
+  ...assignments.map(
+    (item) => Card(
+      child: ListTile(
+        leading: const Icon(Icons.devices),
+trailing: IconButton(
+  icon: const Icon(Icons.delete_outline),
+  onPressed: () async {
+    await supabase
+        .from('device_assignments')
+        .delete()
+        .eq('field_id', item['field_id']);
+    await _loadAssignments();
+  },
+),
+        title: Text(
+          item['field_name']?.toString() ?? '-',
+        ),
+        subtitle: Text(
+          'Kon ID: ${item['field_id']?.toString() ?? '-'}',
+        ),
+      ),
+    ),
+  ),
+        ],
+      ),
+    );
+  }
+}
+class _MenuCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _MenuCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: CircleAvatar(
+          child: Icon(icon),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(subtitle),
+        trailing: const Icon(
+          Icons.chevron_right,
+        ),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+class DiagnosticPage extends StatefulWidget {
+  const DiagnosticPage({super.key});
+
+  @override
+  State<DiagnosticPage> createState() => _DiagnosticPageState();
+}
+
+class _DiagnosticPageState extends State<DiagnosticPage> {
+  final equipmentController = TextEditingController();
+  final tagController = TextEditingController();
+  final alarmController = TextEditingController();
+
+  String result = '';
+
+  bool analyzing = false;
+
+  Future<void> analyze() async {
+    final equipment = equipmentController.text.trim();
+    final tag = tagController.text.trim();
+    final alarm = alarmController.text.trim();
+
+    if (equipment.isEmpty && tag.isEmpty && alarm.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Uskuna, TAG yoki Signal/Alarm/Tripni kiriting')),
+      );
+      return;
+    }
+    setState(() {
+      analyzing = true;
+      result = 'AI texnik hujjatlarni tekshirmoqda...';
+    });
+    try {
+      final documentNames = await AiMuhandisService.currentDocumentNames();
+      if (documentNames.isEmpty) {
+        throw StateError('Ushbu kon uchun hujjatlar topilmadi. Avval hujjat yuklang yoki Kon ID ni tekshiring.');
+      }
+      final ranked = AiMuhandisService.rankDocuments(
+        documentNames, '$equipment $tag $alarm',
+      );
+      final answer = await AiMuhandisService.ask(mode: 'diagnostic', question: """
+Texnik diagnostika, faqat shu konning yuklangan hujjatlari asosida.
+Uskuna: $equipment
+TAG: $tag
+Signal/Alarm/Trip: $alarm
+Ushbu konga tegishli hujjatlar: ${ranked.join('; ')}
+
+Signalni o‘zbekchaga tarjima qiling. Ehtimoliy sabablar, xavfsiz tekshirish
+qadamlari, signal manbai va ruxsat etilgan yechimlarni keltiring.
+Har bir texnik dalil uchun haqiqatan topilgan HUJJAT NOMI va SAHIFASINI
+ko‘rsating. Sahifa topilmasa "hujjatda tasdiqlanmadi" deb yozing.
+Himoya, interlock yoki tripni chetlab o‘tishni taklif qilmang.
+Hujjatda yo‘q raqam/ulagich/TAGlarni taxmin qilmang.
+""");
+      if (!mounted) return;
+      setState(() => result = answer);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => result = 'Diagnostika bajarilmadi: $e');
+    } finally {
+      if (mounted) setState(() => analyzing = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    equipmentController.dispose();
+    tagController.dispose();
+    alarmController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI Diagnostika'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            controller: equipmentController,
+            decoration: const InputDecoration(
+              labelText: 'Uskuna nomi',
+              prefixIcon: Icon(Icons.precision_manufacturing),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: tagController,
+            decoration: const InputDecoration(
+              labelText: 'TAG raqami',
+              prefixIcon: Icon(Icons.tag),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: alarmController,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              labelText: 'Signal / Alarm / Trip',
+              hintText: 'Signal yoki alarm matnini kiriting',
+              alignLabelWithHint: true,
+              prefixIcon: Icon(Icons.warning_amber),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: analyzing ? null : analyze,
+            icon: const Icon(Icons.analytics),
+            label: const Text('AI TAHLIL'),
+          ),
+          if (result.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            const Text(
+              'Natija',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(result),
+              ),
+            ),
+const SizedBox(height: 12),
+FilledButton.icon(
+  onPressed: () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WorkResultPage(
+          equipment: equipmentController.text.trim(),
+          tag: tagController.text.trim(),
+          alarm: alarmController.text.trim(),
+        ),
+      ),
+    );
+  },
+  icon: const Icon(Icons.assignment_turned_in),
+  label: const Text('ISH YAKUNI'),
+),
+          ],
+        ],
+      ),
+    );
+
+  }
+}
+class AiQuestionPage extends StatefulWidget {
+  const AiQuestionPage({super.key});
+
+  @override
+  State<AiQuestionPage> createState() => _AiQuestionPageState();
+}
+String lastAiSignalAnalysis = '';
+class _AiQuestionPageState extends State<AiQuestionPage> {
+  final questionController = TextEditingController();
+
+  Uint8List? selectedImage;
+  String? imageName;
+  String result = '';
+
+  Future<void> pickImage() async {
+    final picker = ImagePicker();
+
+    final image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+    );
+
+    if (image == null) return;
+
+    final bytes = await image.readAsBytes();
+
+    if (!mounted) return;
+
+    setState(() {
+      selectedImage = bytes;
+      imageName = image.name;
+      result = '';
+      SignalImageBridge.remember(bytes, questionController.text.trim());
+    });
+  }
+Future<void> sendQuestion() async {
+  final question = questionController.text.trim();
+
+  if (selectedImage == null && question.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Rasm tanlang yoki savol yozing'),
+      ),
+    );
+    return;
+  }
+
+  setState(() {
+    result = 'AI tahlil qilmoqda...';
+  });
+
+  try {
+  final response = await Supabase.instance.client.functions.invoke(
+      'ai_diagnose',
+      body: {
+        'question': question,
+'image': selectedImage != null ? base64Encode(selectedImage!) : null,
+'field_id': AppSession.fieldId ?? '',
+      },
+    );
+
+    if (!mounted) return;
+lastAiSignalAnalysis =
+    response.data?['answer']?.toString() ?? '';
+SignalImageBridge.rememberAnswer(question, lastAiSignalAnalysis);
+    setState(() {
+      result = response.data?['answer']?.toString() ??
+          'AI javob qaytarmadi';
+    });
+  } catch (e) {
+    if (!mounted) return;
+
+    setState(() {
+      result = 'Xatolik: $e';
+    });
+  }
+}
+
+  void removeImage() {
+    SignalImageBridge.clear();
+    setState(() {
+      selectedImage = null;
+      imageName = null;
+      result = '';
+    });
+  }
+
+  @override
+  void dispose() {
+    questionController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI ga savol'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          OutlinedButton.icon(
+            onPressed: pickImage,
+            icon: const Icon(Icons.add_photo_alternate),
+            label: const Text('RASM TANLASH'),
+          ),
+
+          if (selectedImage != null) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                selectedImage!,
+                height: 220,
+                fit: BoxFit.contain,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    imageName ?? 'Rasm tanlandi',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  onPressed: removeImage,
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+          ],
+
+          const SizedBox(height: 16),
+
+          TextField(
+            controller: questionController,
+            maxLines: 6,
+            decoration: const InputDecoration(
+              labelText: 'Operator savoli / izohi',
+              hintText:
+                  'Rasm yoki nosozlik haqida savol yozing',
+              alignLabelWithHint: true,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          FilledButton.icon(
+            onPressed: sendQuestion,
+            icon: const Icon(Icons.send),
+            label: const Text('AI GA YUBORISH'),
+          ),
+
+          if (result.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            const Text(
+              'AI natijasi',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(result),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class TechnologyPage extends StatefulWidget {
+  const TechnologyPage({super.key});
+
+  @override
+  State<TechnologyPage> createState() => _TechnologyPageState();
+}
+class _TechnologyPageState extends State<TechnologyPage> with WidgetsBindingObserver {
+final supabase = Supabase.instance.client;
+  final inletPressureController = TextEditingController();
+  final inletTempController = TextEditingController();
+  final outletPressureController = TextEditingController();
+  final outletTempController = TextEditingController();
+  final gasFlowController = TextEditingController();
+  final rpmController = TextEditingController();
+
+  // Dynamic RPM names and controllers are loaded from Supabase.
+  List<Map<String, dynamic>> rpmDefinitions = [];
+  final Map<String, TextEditingController> extraRpmControllers = {};
+  String? rpmConfigError;
+
+  // Never write RPM definitions against an invented 'default' field.
+  String get _rpmFieldId => AppSession.fieldId?.trim() ?? '';
+
+  bool _ensureRpmWriteAccess() {
+    if (_rpmFieldId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Avval konni tanlang')),
+      );
+      return false;
+    }
+    // Local AppSession role is only a UI role, not a verified Supabase role.
+    if (supabase.auth.currentSession == null ||
+        supabase.auth.currentUser?.appMetadata['role'] != 'super_admin') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(
+          'RPM sozlamalari faqat Supabase Auth Super Adminga ruxsat etiladi',
+        )),
+      );
+      return false;
+    }
+    return true;
+  }
+
+  List<Map<String, dynamic>> get activeRpmDefinitions => rpmDefinitions
+      .where((field) => field['is_active'] == true)
+      .toList();
+
+  List<Map<String, dynamic>> hourlyData = [];
+  bool loading = true;
+  bool saving = false;
+bool _monitoringFetchInProgress = false;
+bool _monitoringUsingOfflineCache = false;
+bool _hasMonitoringSnapshot = false;
+DateTime? _monitoringLastSynced;
+Timer? _monitoringRefreshTimer;
+  DateTime selectedDate = DateTime.now();
+
+@override
+void initState() {
+  super.initState();
+  WidgetsBinding.instance.addObserver(this);
+  _bootstrapMonitoring();
+  _loadRpmDefinitions();
+_monitoringRefreshTimer = Timer.periodic(
+  const Duration(minutes: 2),
+  (_) {
+    if (!mounted || _monitoringFetchInProgress) return;
+    _loadRpmDefinitions();
+    _loadTechnologyData();
+  },
+);
+}
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.resumed && mounted) {
+    _loadRpmDefinitions();
+    _loadTechnologyData();
+  }
+}
+
+
+  Future<void> _refreshMonitoring() async {
+    await _loadRpmDefinitions();
+    await _loadTechnologyData();
+  }
+
+  Future<void> _loadRpmDefinitions() async {
+    final requestedFieldId = _rpmFieldId;
+    if (requestedFieldId.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        rpmDefinitions = [];
+        rpmConfigError = AppSession.isSuperAdmin
+            ? 'RPM qo‘shishdan oldin ko‘rish uchun konni tanlang'
+            : null;
+      });
+      return;
+    }
+    if (supabase.auth.currentSession == null) {
+      if (!mounted) return;
+      setState(() {
+        rpmDefinitions = [];
+        rpmConfigError =
+            'Qo‘shimcha RPM maydonlari uchun Supabase Auth orqali kirish zarur.';
+      });
+      return;
+    }
+    try {
+      final rows = await supabase
+          .from('rpm_field_definitions')
+          .select('id, name, is_active')
+          .eq('field_id', requestedFieldId)
+          .order('id');
+      if (!mounted || _rpmFieldId != requestedFieldId) return;
+      final definitions = List<Map<String, dynamic>>.from(rows);
+      setState(() {
+        rpmDefinitions = definitions;
+        rpmConfigError = null;
+        for (final field in definitions) {
+          final key = field['id'].toString();
+          extraRpmControllers.putIfAbsent(
+            key, () => TextEditingController(),
+          );
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => rpmConfigError =
+          'RPM sozlamalarini yuklab bo‘lmadi: $error');
+    }
+  }
+
+  double? _extraRpmValue(Map<String, dynamic> row, String key) {
+    final values = row['extra_rpm_values'];
+    if (values is! Map) return null;
+    final value = values[key];
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
+
+  double? _extraRpmAverage(
+    List<Map<String, dynamic>> rows,
+    String key,
+  ) {
+    double sum = 0;
+    var count = 0;
+    for (final row in rows) {
+      final value = _extraRpmValue(row, key);
+      if (value == null) continue;
+      sum += value;
+      count++;
+    }
+    return count == 0 ? null : sum / count;
+  }
+
+  Future<String?> _askRpmName({String? initial}) async {
+    final controller = TextEditingController(text: initial ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(initial == null
+            ? 'Yangi dvigatel RPM qo‘shish'
+            : 'RPM nomini o‘zgartirish'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 60,
+          decoration: const InputDecoration(
+            labelText: 'Dvigatel nomi',
+            hintText: 'Masalan: GPA-200',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('BEKOR QILISH'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              dialogContext, controller.text.trim(),
+            ),
+            child: const Text('SAQLASH'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return name?.trim();
+  }
+
+  Future<void> _addExtraRpmField() async {
+    if (!AppSession.isSuperAdmin) return;
+    if (!_ensureRpmWriteAccess()) return;
+    final name = await _askRpmName();
+    if (name == null || name.isEmpty) return;
+    try {
+      await supabase.from('rpm_field_definitions').insert({
+        'field_id': _rpmFieldId,
+        'name': name,
+        'is_active': true,
+      });
+      await _loadRpmDefinitions();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('RPM qo‘shishda xato: $error')),
+      );
+    }
+  }
+
+  Future<void> _renameExtraRpmField(Map<String, dynamic> field) async {
+    if (!AppSession.isSuperAdmin) return;
+    if (!_ensureRpmWriteAccess()) return;
+    final name = await _askRpmName(initial: field['name']?.toString());
+    if (name == null || name.isEmpty) return;
+    try {
+      await supabase.from('rpm_field_definitions')
+          .update({'name': name})
+          .eq('id', field['id'])
+          .eq('field_id', _rpmFieldId);
+      await _loadRpmDefinitions();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('RPM nomini o‘zgartirishda xato: $error')),
+      );
+    }
+  }
+
+  Future<void> _archiveExtraRpmField(Map<String, dynamic> field) async {
+    if (!AppSession.isSuperAdmin) return;
+    if (!_ensureRpmWriteAccess()) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('RPM maydonini yashirish'),
+        content: Text(
+          '${field['name']} endi yangi yozuvlarga kiritilmaydi. '
+          'Eski ma’lumotlar saqlanadi. Davom etilsinmi?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('YO‘Q'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('HA'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await supabase.from('rpm_field_definitions')
+          .update({'is_active': false})
+          .eq('id', field['id'])
+          .eq('field_id', _rpmFieldId);
+      await _loadRpmDefinitions();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('RPMni yashirishda xato: $error')),
+      );
+    }
+  }
+
+Future<void> _bootstrapMonitoring() async {
+  await _restoreMonitoringCache();
+
+  if (mounted) {
+    await _loadTechnologyData();
+  }
+}
+
+Future<void> _restoreMonitoringCache() async {
+  final fieldId = AppSession.fieldId?.trim() ?? '';
+  if (fieldId.isEmpty) return;
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('hourly_cache_$fieldId');
+
+    if (raw == null) return;
+
+    final decoded = jsonDecode(raw);
+    if (decoded is! List) return;
+
+    final cutoff =
+        DateTime.now().subtract(const Duration(days: 30));
+
+    final valid = <Map<String, dynamic>>[];
+
+    for (final item in decoded) {
+      if (item is! Map) continue;
+
+      final row = Map<String, dynamic>.from(item);
+      final date = DateTime.tryParse(
+        row['created_at']?.toString() ?? '',
+      );
+
+      if (date == null || date.toLocal().isBefore(cutoff)) {
+        continue;
+      }
+
+      if (row['field_id'] != null &&
+          row['field_id'].toString() != fieldId) {
+        continue;
+      }
+
+      valid.add(row);
+    }
+
+    if (!mounted || AppSession.fieldId?.trim() != fieldId) {
+      return;
+    }
+
+    setState(() {
+      hourlyData = valid;
+      loading = false;
+      _hasMonitoringSnapshot = true;
+      _monitoringUsingOfflineCache = true;
+      _monitoringLastSynced = DateTime.tryParse(
+        prefs.getString('hourly_cache_time_$fieldId') ?? '',
+      );
+    });
+  } catch (_) {
+    // Kesh buzilgan bo‘lsa, onlayn yuklash davom etadi.
+  }
+}
+  String _dateText(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  String _timeText(DateTime date) {
+    final h = date.hour.toString().padLeft(2, '0');
+    final m = date.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  double _number(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  Future<void> _loadTechnologyData() async {
+if (_monitoringFetchInProgress) return;
+_monitoringFetchInProgress = true;
+  if (mounted && !_hasMonitoringSnapshot) {
+  setState(() {
+    loading = true;
+  });
+}
+
+    try {
+      final cutoff = DateTime.now()
+          .subtract(const Duration(days: 30))
+          .toIso8601String();
+
+      var query = supabase
+    .from('technology_data')
+    .select()
+    .gte('created_at', cutoff);
+
+if (AppSession.fieldId != null &&
+    AppSession.fieldId!.isNotEmpty) {
+  query = query.eq('field_id', AppSession.fieldId!);
+} else {
+  // Avoid loading every field when no field has been selected.
+  if (!mounted) return;
+  setState(() {
+    hourlyData = [];
+    loading = false;
+  });
+  return;
+}
+
+final response =
+    await query.order('created_at', ascending: false);
+      final rows = List<Map<String, dynamic>>.from(response);
+
+      if (!mounted) return;
+
+      setState(() {
+  hourlyData = rows;
+  loading = false;
+  _monitoringUsingOfflineCache = false;
+  _hasMonitoringSnapshot = true;
+  _monitoringLastSynced = DateTime.now();
+});
+      final fieldId = AppSession.fieldId;
+      if (fieldId != null && fieldId.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('hourly_cache_$fieldId', jsonEncode(rows));
+await prefs.setString(
+  'hourly_cache_time_$fieldId',
+  DateTime.now().toIso8601String(),
+);
+      }
+    } catch (e) {
+      // Internet uzilganda faqat shu kon uchun avval ko‘rilgan 30 kunlik yozuvlar.
+      final fieldId = AppSession.fieldId;
+      if (fieldId != null && fieldId.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        final saved = prefs.getString('hourly_cache_$fieldId');
+        if (saved != null) {
+          try {
+            final list = jsonDecode(saved) as List;
+            final today = DateTime.now();
+            final valid = list
+                .map((value) => Map<String, dynamic>.from(value as Map))
+                .where((row) {
+                  final date = DateTime.tryParse(
+                    row['created_at']?.toString() ?? '',
+                  );
+                  return date != null &&
+                      today.difference(date.toLocal()).inDays <= 30;
+                }).toList();
+          if (mounted) {
+  setState(() {
+    hourlyData = valid;
+    loading = false;
+    _monitoringUsingOfflineCache = true;
+    _hasMonitoringSnapshot = true;
+    _monitoringLastSynced = DateTime.tryParse(
+      prefs.getString('hourly_cache_time_$fieldId') ?? '',
+    );
+  });
+}
+            return;
+          } catch (_) { /* Cache buzilgan bo‘lsa onlayn xato chiqadi. */ }
+        }
+      }
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Ma’lumotlarni yuklashda xato: $e',
+          ),
+        ),
+      );
+    
+} finally {
+  _monitoringFetchInProgress = false;
+}
+}
+String _monitoringSyncLabel() {
+  final t = _monitoringLastSynced;
+
+  if (t == null) {
+    return 'Oxirgi yangilanish vaqti noma’lum';
+  }
+
+  return 'Oxirgi onlayn yangilanish: '
+      '${_dateText(t.toLocal())} ${_timeText(t.toLocal())}';
+}
+  List<Map<String, dynamic>> _dataForDate(DateTime date) {
+    final wanted = _dateText(date);
+
+    return hourlyData.where((item) {
+      final savedDate = item['data']?.toString();
+
+      if (savedDate != null && savedDate.isNotEmpty) {
+        return savedDate == wanted;
+      }
+
+      final created = DateTime.tryParse(
+        item['created_at']?.toString() ?? '',
+      );
+
+      if (created == null) return false;
+
+      return _dateText(created.toLocal()) == wanted;
+    }).toList();
+  }
+Map<String, List<Map<String, dynamic>>> _dailyFolders() {
+  final folders = <String, List<Map<String, dynamic>>>{};
+
+  for (final item in hourlyData) {
+    final savedDate = item['data']?.toString();
+    final created = DateTime.tryParse(
+      item['created_at']?.toString() ?? '',
+    );
+
+    final date = (savedDate != null && savedDate.isNotEmpty)
+        ? savedDate
+        : (created != null ? _dateText(created.toLocal()) : '');
+
+    if (date.isEmpty) continue;
+final today = _dateText(DateTime.now());
+if (date == today) continue;
+    folders.putIfAbsent(date, () => []);
+    folders[date]!.add(item);
+  }
+
+  return folders;
+}
+  double _average(
+    List<Map<String, dynamic>> rows,
+    String field,
+  ) {
+    if (rows.isEmpty) return 0;
+
+    double total = 0;
+
+    for (final row in rows) {
+      total += _number(row[field]);
+    }
+
+    return total / rows.length;
+  }
+
+  String _differenceText(
+    String title,
+    double today,
+    double yesterday,
+  ) {
+    if (yesterday == 0) {
+      return '$title: kechagi ma’lumot yo‘q';
+    }
+
+    final difference = today - yesterday;
+
+    if (difference.abs() < 0.01) {
+      return '$title: deyarli o‘zgarmagan';
+    }
+
+    if (difference > 0) {
+      return '$title: kechagidan '
+          '${difference.toStringAsFixed(2)} yuqori';
+    }
+
+    return '$title: kechagidan '
+        '${difference.abs().toStringAsFixed(2)} past';
+  }
+
+  String _dailyComparison() {
+    final now = DateTime.now();
+
+    final today = _dataForDate(now);
+
+    final yesterdayDate = now.subtract(
+      const Duration(days: 1),
+    );
+
+    final yesterday = _dataForDate(yesterdayDate);
+
+    if (today.isEmpty) {
+      return 'Bugungi ma’lumot hali kiritilmagan.';
+    }
+
+    if (yesterday.isEmpty) {
+      return 'Kechagi ma’lumot yo‘q. '
+          'Bugungi ko‘rsatkichlar saqlanmoqda.';
+    }
+
+final lines = <String>[
+      _differenceText(
+        'Kirish bosimi',
+        _average(today, 'inlet_pressure'),
+        _average(yesterday, 'inlet_pressure'),
+      ),
+      _differenceText(
+        'Kirish temperaturasi',
+        _average(today, 'inlet_temp'),
+        _average(yesterday, 'inlet_temp'),
+      ),
+      _differenceText(
+        'Chiqish bosimi',
+        _average(today, 'outlet_pressure'),
+        _average(yesterday, 'outlet_pressure'),
+      ),
+      _differenceText(
+        'Chiqish temperaturasi',
+        _average(today, 'outlet_temp'),
+        _average(yesterday, 'outlet_temp'),
+      ),
+      _differenceText(
+        'Gaz sarfi',
+        _average(today, 'gas_flow'),
+        _average(yesterday, 'gas_flow'),
+      ),
+      _differenceText(
+        'RPM',
+        _average(today, 'rpm'),
+        _average(yesterday, 'rpm'),
+      ),
+    ];
+
+
+    for (final field in rpmDefinitions) {
+      final key = field['id'].toString();
+      final current = _extraRpmAverage(today, key);
+      final previous = _extraRpmAverage(yesterday, key);
+      if (current == null && previous == null) continue;
+      if (current == null || previous == null) {
+        lines.add('${field['name']} RPM: taqqoslash uchun ma’lumot kam');
+      } else {
+        lines.add(_differenceText(
+          '${field['name']} RPM', current, previous,
+        ));
+      }
+    }
+    return lines.join('\n');
+  }
+
+Future<void> _saveHourlyData() async {
+    if (_rpmFieldId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ma’lumot saqlashdan oldin konni tanlang')),
+      );
+      return;
+    }
+    if (!AppSession.isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Faqat Admin yoki Super Admin ma’lumot kirita oladi',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final inletPressure =
+        double.tryParse(inletPressureController.text.trim());
+    final inletTemp =
+        double.tryParse(inletTempController.text.trim());
+    final outletPressure =
+        double.tryParse(outletPressureController.text.trim());
+    final outletTemp =
+        double.tryParse(outletTempController.text.trim());
+    final gasFlow =
+        double.tryParse(gasFlowController.text.trim());
+    final rpm =
+        double.tryParse(rpmController.text.trim());
+
+    if (inletPressure == null ||
+        inletTemp == null ||
+        outletPressure == null ||
+        outletTemp == null ||
+        gasFlow == null ||
+        rpm == null ||
+        !inletPressure.isFinite ||
+        !inletTemp.isFinite ||
+        !outletPressure.isFinite ||
+        !outletTemp.isFinite ||
+        !gasFlow.isFinite ||
+        !rpm.isFinite ||
+        rpm < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Barcha 6 ta parametrni raqam bilan kiriting',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Additional RPM values are optional; an empty field means no reading.
+    final extraRpmValues = <String, double>{};
+    for (final field in activeRpmDefinitions) {
+      final key = field['id'].toString();
+      final input = extraRpmControllers[key]?.text.trim() ?? '';
+      if (input.isEmpty) continue;
+      final number = double.tryParse(input.replaceAll(',', '.'));
+      if (number == null || !number.isFinite || number < 0) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${field['name']} uchun manfiy bo‘lmagan son kiriting'),
+        ));
+        return;
+      }
+      extraRpmValues[key] = number;
+    }
+
+    setState(() { saving = true; });
+    try {
+      final now = DateTime.now();
+
+      await supabase.from('technology_data').insert({
+
+  'field_name': AppSession.fieldName ?? '',
+'field_id': AppSession.fieldId ?? '',
+  'device_id': AppSession.deviceId ?? '',
+  'date': _dateText(now),
+  'time': _timeText(now),
+  'inlet_pressure': inletPressure,
+  'inlet_temp': inletTemp,
+  'outlet_pressure': outletPressure,
+  'outlet_temp': outletTemp,
+  'gas_flow': gasFlow,
+  'rpm': rpm,
+  'extra_rpm_values': extraRpmValues,
+
+});
+    
+
+      inletPressureController.clear();
+      inletTempController.clear();
+      outletPressureController.clear();
+      outletTempController.clear();
+      gasFlowController.clear();
+      rpmController.clear();      for (final controller in extraRpmControllers.values) {
+        controller.clear();
+      }
+
+
+      await _loadTechnologyData();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Texnologik parametrlar saqlandi',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saqlashda xato: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          saving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate,
+      firstDate: DateTime.now().subtract(
+        const Duration(days: 30),
+      ),
+      lastDate: DateTime.now(),
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      selectedDate = picked;
+    });
+  }
+
+  Future<void> _deleteRow(dynamic id) async {
+    if (!AppSession.isSuperAdmin) return;
+
+    try {
+      await supabase
+          .from('technology_data')
+          .delete()
+          .eq('id', id);
+
+      await _loadTechnologyData();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Yozuv o‘chirildi'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('O‘chirishda xato: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteSelectedDay() async {
+    if (!AppSession.isSuperAdmin) return;
+
+    final date = _dateText(selectedDate);
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Kunni o‘chirish'),
+          content: Text(
+            '$date sanasidagi barcha ma’lumotlar o‘chirilsinmi?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+
+},
+              child: const Text('YO‘Q'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('HA'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await supabase
+          .from('technology_data')
+          .delete()
+      .eq('date', date)
+.eq('field_id', AppSession.fieldId!);
+
+      await _loadTechnologyData();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tanlangan kun o‘chirildi'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('O‘chirishda xato: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteAllTechnologyData() async {
+    if (!AppSession.isSuperAdmin) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Barcha ma’lumotlarni o‘chirish'),
+          content: const Text(
+            'Texnologik parametrlarning barcha yozuvlari '
+            'o‘chiriladi. Davom etilsinmi?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('YO‘Q'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('HA'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await supabase
+          .from('technology_data')
+          .delete()
+          .eq('field_id', AppSession.fieldId!);
+
+      await _loadTechnologyData();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Barcha ma’lumotlar o‘chirildi'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('O‘chirishda xato: $e'),
+        ),
+      );
+    }
+  }
+Future<void> _exportDailyPdf() async {
+    final rows = _dataForDate(selectedDate);
+
+    if (rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Tanlangan kunda ma’lumot yo‘q',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final pdf = pw.Document();
+    final date = _dateText(selectedDate);
+
+    pdf.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Text(
+            'AI Muhandis - Sutkalik monitoring',
+            style: pw.TextStyle(
+              fontSize: 18,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Text('Sana: $date'),
+          pw.SizedBox(height: 16),
+
+          pw.Table.fromTextArray(
+            headers: const [
+              'Vaqt',
+              'Kirish P',
+              'Kirish T',
+              'Chiqish P',
+              'Chiqish T',
+              'Gaz',
+              'GPA-100 RPM',
+            ],
+            data: rows.map((row) {
+              return [
+                row['time']?.toString() ?? '',
+                _number(
+                  row['inlet_pressure'],
+                ).toStringAsFixed(2),
+                _number(
+                  row['inlet_temp'],
+                ).toStringAsFixed(2),
+                _number(
+                  row['outlet_pressure'],
+                ).toStringAsFixed(2),
+                _number(
+                  row['outlet_temp'],
+                ).toStringAsFixed(2),
+                _number(
+                  row['gas_flow'],
+                ).toStringAsFixed(2),
+                _number(
+                  row['rpm'],
+                ).toStringAsFixed(0),
+              ];
+            }).toList(),
+          ),
+
+          // Each extra engine gets its own narrow table, avoiding an overly
+          // wide table when the Super Admin adds multiple RPM fields.
+          ...rpmDefinitions.expand((field) {
+            final key = field['id'].toString();
+            final data = rows
+                .where((row) => _extraRpmValue(row, key) != null)
+                .map((row) => [
+                      row['time']?.toString() ?? '',
+                      _extraRpmValue(row, key)!.toStringAsFixed(0),
+                    ])
+                .toList();
+            if (data.isEmpty) return <pw.Widget>[];
+            return <pw.Widget>[
+              pw.SizedBox(height: 12),
+              pw.Text('${field['name']} - RPM'),
+              pw.Table.fromTextArray(
+                headers: ['Vaqt', 'RPM'],
+                data: data,
+              ),
+            ];
+          }),
+          pw.SizedBox(height: 16),
+
+          pw.Text(
+            'Sutkalik ortacha korsatkichlar',
+            style: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+
+          pw.Text(
+            'Kirish bosimi: '
+            '${_average(rows, 'inlet_pressure').toStringAsFixed(2)}',
+          ),
+          pw.Text(
+            'Kirish temperaturasi: '
+            '${_average(rows, 'inlet_temp').toStringAsFixed(2)}',
+          ),
+          pw.Text(
+            'Chiqish bosimi: '
+            '${_average(rows, 'outlet_pressure').toStringAsFixed(2)}',
+          ),
+          pw.Text(
+            'Chiqish temperaturasi: '
+            '${_average(rows, 'outlet_temp').toStringAsFixed(2)}',
+          ),
+          pw.Text(
+            'Gaz sarfi: '
+            '${_average(rows, 'gas_flow').toStringAsFixed(2)}',
+          ),
+          pw.Text(
+            'GPA-100 RPM: '
+            '${_average(rows, 'rpm').toStringAsFixed(0)}',
+          ),
+          ...rpmDefinitions.map((field) {
+            final average = _extraRpmAverage(rows, field['id'].toString());
+            return pw.Text(
+              '${field['name']} RPM: '
+              '${average?.toStringAsFixed(0) ?? '-'}',
+            );
+          }),
+
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (_) async => pdf.save(),
+      name: 'monitoring_$date.pdf',
+    );
+  }
+
+Widget _numberField(
+    TextEditingController controller,
+    String label,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(
+          decimal: true,
+        ),
+        decoration: InputDecoration(
+          labelText: label,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedRows = _dataForDate(selectedDate);
+final dailyFolders = _dailyFolders();
+final sortedFolderDates = dailyFolders.keys.toList()
+  ..sort((a, b) => b.compareTo(a));
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Sutkalik monitoring'),
+        actions: [
+          IconButton(
+            tooltip: 'Yangilash',
+            onPressed: _refreshMonitoring,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: loading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : RefreshIndicator(
+              onRefresh: _refreshMonitoring,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+ListTile(
+  leading: Icon(
+    _monitoringUsingOfflineCache
+        ? Icons.cloud_off_outlined
+        : Icons.cloud_done_outlined,
+  ),
+  title: Text(
+    !_hasMonitoringSnapshot
+        ? 'Monitoring ma’lumoti hali olinmagan'
+        : _monitoringUsingOfflineCache
+            ? 'Offline: saqlangan ma’lumotlar'
+            : 'Monitoring ma’lumotlari yangilangan',
+  ),
+  subtitle: Text(_monitoringSyncLabel()),
+),
+const SizedBox(height: 8),
+if (sortedFolderDates.isNotEmpty) ...[
+  const Text(
+    'Kunlik arxiv',
+    style: TextStyle(
+      fontSize: 18,
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+  const SizedBox(height: 8),
+
+  ...sortedFolderDates.map((date) {
+    final rows = dailyFolders[date] ?? [];
+
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.folder),
+        title: Text(date),
+        subtitle: Text('${rows.length} ta soatlik ma’lumot'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+          final parts = date.split('-');
+          if (parts.length == 3) {
+            setState(() {
+              selectedDate = DateTime(
+                int.parse(parts[0]),
+                int.parse(parts[1]),
+                int.parse(parts[2]),
+              );
+            });
+          }
+        },
+      ),
+    );
+  }),
+
+  const SizedBox(height: 16),
+],
+                  if (AppSession.isAdmin) ...[
+                    const Text(
+                      'Texnologik parametrlarni kiritish',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    _numberField(
+                      inletPressureController,
+                      'Kirish bosimi',
+                    ),
+                    _numberField(
+                      inletTempController,
+                      'Kirish temperaturasi',
+                    ),
+                    _numberField(
+                      outletPressureController,
+                      'Chiqish bosimi',
+                    ),
+                    _numberField(
+                      outletTempController,
+                      'Chiqish temperaturasi',
+                    ),
+                    _numberField(
+                      gasFlowController,
+                      'Gaz sarfi',
+                    ),
+                    _numberField(
+                      rpmController,
+                      'GPA-100 / aylanish tezligi (RPM)',
+                    ),
+
+                    for (final field in activeRpmDefinitions)
+                      _numberField(
+                        extraRpmControllers[field['id'].toString()]!,
+                        '${field['name']} / aylanish tezligi (RPM)',
+                      ),
+                    if (rpmConfigError != null)
+                      Text(
+                        rpmConfigError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    if (AppSession.isSuperAdmin) ...[
+                      if (supabase.auth.currentSession == null)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            'RPM qo‘shish va o‘zgartirish uchun '
+                            'Supabase Auth ulanishi kerak.',
+                          ),
+                        ),
+                      OutlinedButton.icon(
+                        onPressed: _rpmFieldId.isEmpty
+                            ? null
+                            : _addExtraRpmField,
+                        icon: const Icon(Icons.add),
+                        label: const Text('YANGI DVIGATEL RPM QO‘SHISH'),
+                      ),
+                      for (final field in activeRpmDefinitions)
+                        ListTile(
+                          dense: true,
+                          title: Text(field['name']?.toString() ?? 'RPM'),
+                          trailing: Wrap(
+                            spacing: 2,
+                            children: [
+                              IconButton(
+                                tooltip: 'Nomini o‘zgartirish',
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: () => _renameExtraRpmField(field),
+                              ),
+                              IconButton(
+                                tooltip: 'Yashirish (eski yozuvlar qoladi)',
+                                icon: const Icon(Icons.visibility_off_outlined),
+                                onPressed: () => _archiveExtraRpmField(field),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed:
+                            saving ? null : _saveHourlyData,
+                        icon: saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.save),
+                        label: Text(
+                          saving
+                              ? 'SAQLANMOQDA...'
+                              : 'SOATLIK MA’LUMOTNI SAQLASH',
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+                  ],
+
+                  const Text(
+                    'Bugun / kecha taqqoslash',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        _dailyComparison(),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _selectDate,
+                          icon: const Icon(
+                            Icons.calendar_month,
+                          ),
+                          label: Text(
+                            _dateText(selectedDate),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        tooltip: 'PDF eksport',
+                        onPressed: _exportDailyPdf,
+                        icon: const Icon(
+                          Icons.picture_as_pdf,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  if (AppSession.isSuperAdmin) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _deleteSelectedDay,
+                            icon: const Icon(
+                              Icons.delete_outline,
+                            ),
+                            label: const Text(
+                              'KUNNI O‘CHIRISH',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                _deleteAllTechnologyData,
+                            icon: const Icon(
+                              Icons.delete_forever,
+                            ),
+                            label: const Text(
+                              'HAMMASINI O‘CHIRISH',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+
+                  const SizedBox(height: 20),
+
+                  Text(
+                    'Kunlik ma’lumotlar '
+                    '(${selectedRows.length} ta)',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+if (selectedRows.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'Bu kunda ma’lumot mavjud emas.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    )
+                  else ...[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Sutkalik o‘rtacha',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Kirish bosimi: '
+                              '${_average(selectedRows, 'inlet_pressure').toStringAsFixed(2)}',
+                            ),
+                            Text(
+                              'Kirish temperaturasi: '
+                              '${_average(selectedRows, 'inlet_temp').toStringAsFixed(2)}',
+                            ),
+                            Text(
+                              'Chiqish bosimi: '
+                              '${_average(selectedRows, 'outlet_pressure').toStringAsFixed(2)}',
+                            ),
+                            Text(
+                              'Chiqish temperaturasi: '
+                              '${_average(selectedRows, 'outlet_temp').toStringAsFixed(2)}',
+                            ),
+                            Text(
+                              'Gaz sarfi: '
+                              '${_average(selectedRows, 'gas_flow').toStringAsFixed(2)}',
+                            ),
+                            Text(
+                              'GPA-100 RPM: '
+                              '${_average(selectedRows, 'rpm').toStringAsFixed(0)}',
+                            ),
+                            for (final field in rpmDefinitions)
+                              if (_extraRpmAverage(
+                                    selectedRows, field['id'].toString(),
+                                  ) != null)
+                                Text(
+                                  '${field['name']} RPM: '
+                                  '${_extraRpmAverage(selectedRows, field['id'].toString())!.toStringAsFixed(0)}',
+                                ),
+
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+
+                    ...selectedRows.map((row) {
+                      return Card(
+                        margin: const EdgeInsets.only(
+                          bottom: 10,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Vaqt: '
+                                      '${row['time'] ?? '-'}',
+                                      style: const TextStyle(
+                                        fontWeight:
+                                            FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Kirish bosimi: '
+                                      '${row['inlet_pressure'] ?? '-'}',
+
+),
+                                    Text(
+                                      'Kirish temperaturasi: '
+                                      '${row['inlet_temp'] ?? '-'}',
+                                    ),
+                                    Text(
+                                      'Chiqish bosimi: '
+                                      '${row['outlet_pressure'] ?? '-'}',
+                                    ),
+                                    Text(
+                                      'Chiqish temperaturasi: '
+                                      '${row['outlet_temp'] ?? '-'}',
+                                    ),
+                                    Text(
+                                      'Gaz sarfi: '
+                                      '${row['gas_flow'] ?? '-'}',
+                                    ),
+                                    Text(
+                                      'GPA-100 RPM: '
+                                      '${row['rpm'] ?? '-'}',
+                                    ),
+                                    for (final field in rpmDefinitions)
+                                      if (_extraRpmValue(row, field['id'].toString()) != null)
+                                        Text(
+                                          '${field['name']} RPM: '
+                                          '${_extraRpmValue(row, field['id'].toString())!.toStringAsFixed(0)}',
+                                        ),
+                                  ],
+                                ),
+                              ),
+
+                              if (AppSession.isSuperAdmin)
+                                IconButton(
+                                  tooltip: 'O‘chirish',
+                                  onPressed: () {
+                                    _deleteRow(row['id']);
+                                  },
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+
+                  const SizedBox(height: 30),
+                ],
+              ),
+            ),
+    );
+  }
+
+  @override
+  void dispose() {
+_monitoringRefreshTimer?.cancel();
+WidgetsBinding.instance.removeObserver(this);
+    inletPressureController.dispose();
+    inletTempController.dispose();
+    outletPressureController.dispose();
+    outletTempController.dispose();
+    gasFlowController.dispose();
+    rpmController.dispose();    for (final controller in extraRpmControllers.values) {
+      controller.dispose();
+    }
+
+    super.dispose();
+  }
+}
+class EquipmentDocumentsPage extends StatelessWidget {
+  const EquipmentDocumentsPage({super.key});
+
+  void _open(BuildContext context, Widget page) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => page),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Uskunalar va hujjatlar'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(
+                  Icons.precision_manufacturing,
+                ),
+              ),
+              title: const Text(
+                'Uskunalar bazasi',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: const Text(
+                'Kompressor, turbina, nasos va boshqa uskunalar',
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+              ),
+              onTap: () {
+                _open(
+                  context,
+                  const EquipmentPage(),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(
+                  Icons.picture_as_pdf,
+                ),
+              ),
+              title: const Text(
+                'Texnik hujjatlar',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: const Text(
+                'Pasport, reglament, P&ID, elektr va KIPiA hujjatlari',
+              ),
+              trailing: const Icon(
+                Icons.chevron_right,
+              ),
+              onTap: () {
+                _open(
+                  context,
+                  const PdfUploadPage(),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+class EquipmentPage extends StatefulWidget {
+  const EquipmentPage({super.key});
+
+  @override
+  State<EquipmentPage> createState() => _EquipmentPageState();
+}
+
+class _EquipmentPageState extends State<EquipmentPage> {
+  final supabase = Supabase.instance.client;
+
+  List<Map<String, dynamic>> equipmentList = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEquipment();
+  }
+
+  Future<void> _loadEquipment() async {
+    setState(() {
+      loading = true;
+    });
+
+    try {
+      final response = await supabase
+          .from('equipment')
+          .select()
+.eq('field_id', AppSession.fieldId ?? '')
+          .order('id', ascending: false);
+
+      if (!mounted) return;
+
+      setState(() {
+        equipmentList =
+            List<Map<String, dynamic>>.from(response);
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Uskunalarni yuklashda xato: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Uskunalar bazasi'),
+        actions: [
+          IconButton(
+            onPressed: _loadEquipment,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: loading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : equipmentList.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Uskunalar bazasida ma’lumot yo‘q',
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: equipmentList.length,
+                  itemBuilder: (context, index) {
+                    final item = equipmentList[index];
+
+                    final name =
+                        item['name']?.toString() ??
+                        item['equipment_name']?.toString() ??
+                        'Uskuna';
+
+                    final tag =
+                        item['tag']?.toString() ??
+                        item['tag_number']?.toString() ??
+                        '';
+
+                    return Card(
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          child: Icon(
+                            Icons.precision_manufacturing,
+                          ),
+                        ),
+                        title: Text(name),
+                        subtitle: tag.isEmpty
+                            ? null
+                            : Text('TAG: $tag'),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+class PdfUploadPage extends StatefulWidget {
+  const PdfUploadPage({super.key});
+
+  @override
+  State<PdfUploadPage> createState() => _PdfUploadPageState();
+}
+Future<void> openTechnicalPdf(
+  BuildContext context, {
+  required String fileName,
+  int? page,
+}) async {
+  try {
+    final fieldId = AppSession.fieldId?.trim() ?? '';
+
+    if (fieldId.isEmpty) {
+      throw StateError('Kon ID tanlanmagan');
+    }
+
+    if (!fileName.toLowerCase().endsWith('.pdf')) {
+      throw StateError('Bu fayl PDF emas');
+    }
+
+    final docs = await Supabase.instance.client
+        .from('Documents')
+        .select('Storage_path')
+        .eq('field_id', fieldId)
+        .eq('File_name', fileName)
+        .limit(2);
+
+    if (docs.length != 1) {
+      throw StateError(
+        'Hujjat topilmadi yoki bir xil nomli hujjatlar bor',
+      );
+    }
+
+    final path = docs.first['Storage_path']?.toString() ?? '';
+    if (path.isEmpty) {
+      throw StateError('PDF manzili topilmadi');
+    }
+
+    final bytes = await Supabase.instance.client.storage
+        .from('technical-documents')
+        .download(path);
+
+    if (!context.mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: Text(fileName)),
+          body: PdfPreview(
+            build: (_) async => bytes,
+            pages: page != null && page > 0
+                ? [page - 1]
+                : null,
+            allowPrinting: false,
+            allowSharing: false,
+            canChangePageFormat: false,
+            canChangeOrientation: false,
+          ),
+        ),
+      ),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('PDF ochilmadi: $e')),
+    );
+  }
+}
+String _documentCategory(String fileName) {
+  final name = fileName.toLowerCase();
+if (name.contains('input_output') ||
+    name.contains('input output') ||
+    name.contains('i/o') ||
+    name.contains('hardwired')) {
+  return 'Avtomatika';
+}
+
+  if (name.contains('p&id') ||
+      name.contains('pid') ||
+      name.contains('p_id')) {
+    return 'P&ID';
+  }
+
+  if (name.contains('kip') ||
+      name.contains('кип') ||
+      name.contains('instrument')) {
+    return 'KIPiA';
+  }
+
+  if (name.contains('elektr') ||
+      name.contains('электр')) {
+    return 'Elektr';
+  }
+
+  if (name.contains('avtomat') ||
+      name.contains('plc') ||
+      name.contains('scada')) {
+    return 'Avtomatika';
+  }
+
+  if (name.contains('pasport') ||
+      name.contains('паспорт')) {
+    return 'Pasport';
+  }
+
+  if (name.contains('reglament') ||
+      name.contains('регламент')) {
+    return 'Reglament';
+  }
+
+  return 'Boshqa hujjatlar';
+}
+class _PdfUploadPageState extends State<PdfUploadPage> {
+  final supabase = Supabase.instance.client;
+
+  List<Map<String, dynamic>> documents = [];
+  bool loading = true;
+  bool uploading = false;
+  bool indexing = false;
+  String indexStatus = '';
+String _documentSearchQuery = '';
+List<Map<String, dynamic>> _tagSearchResults = [];
+int _tagSearchRequestId = 0;
+bool _tagSearchLoading = false;
+String _tagSearchError = '';
+List<Map<String, dynamic>> get _filteredDocuments {
+  final query = _documentSearchQuery.trim().toLowerCase();
+
+  if (query.isEmpty) return documents;
+
+  return documents.where((document) {
+    final name =
+        document['File_name']?.toString().toLowerCase() ?? '';
+
+    final category = _documentCategory(name).toLowerCase();
+
+    return name.contains(query) || category.contains(query);
+  }).toList();
+}
+Future<void> _searchTag(String tag) async {
+final requestId = ++_tagSearchRequestId;
+  final fieldId = AppSession.fieldId?.trim() ?? '';
+
+  if (tag.trim().isEmpty || fieldId.isEmpty) {
+    setState(() {
+      _tagSearchResults = [];
+      _tagSearchError = fieldId.isEmpty
+          ? 'Avval konni tanlang'
+          : '';
+    });
+    return;
+  }
+
+  setState(() {
+    _tagSearchLoading = true;
+    _tagSearchError = '';
+    _tagSearchResults = [];
+  });
+
+  try {
+    final response = await supabase.functions.invoke(
+      'ai_diagnose',
+      body: {
+        'action': 'search_tag',
+        'field_id': fieldId,
+        'tag': tag.trim(),
+      },
+    );
+
+    final data = response.data;
+
+    if (data is! Map || data['results'] is! List) {
+      throw Exception(
+        data is Map
+            ? (data['error'] ?? 'Server javobi noto‘g‘ri')
+            : 'Server javobi noto‘g‘ri',
+      );
+    }
+
+    if (!mounted || requestId != _tagSearchRequestId) return;
+
+    setState(() {
+      _tagSearchResults = (data['results'] as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      _tagSearchLoading = false;
+    });
+  } catch (e) {
+if (!mounted || requestId != _tagSearchRequestId) return;
+
+    setState(() {
+      _tagSearchLoading = false;
+      _tagSearchError = e.toString();
+    });
+  }
+}
+  Future<void> _indexExistingDocuments() async {
+    if (!AppSession.isAdmin || indexing) return;
+    final pdfFiles = documents.where((doc) =>
+        (doc['File_name']?.toString().toLowerCase() ?? '').endsWith('.pdf')).toList();
+    if (pdfFiles.isEmpty) return;
+    setState(() { indexing = true; indexStatus = 'PDF indekslash boshlandi'; });
+    var succeeded = 0;
+    var failed = 0;
+String indexError = '';
+    for (var i = 0; i < pdfFiles.length; i++) {
+      if (!mounted) break;
+      setState(() => indexStatus = 'PDF ${i + 1}/${pdfFiles.length} indekslanmoqda...');
+      try {
+        final response = await supabase.functions.invoke('ai_diagnose', body: {
+          'action': 'index_document',
+          'document_id': pdfFiles[i]['id'].toString(),
+          'field_id': AppSession.fieldId ?? '',
+        });
+        final data = response.data;
+        if (data is Map && data['indexed'] == true) {
+          succeeded++;
+        } else {
+  failed++;
+  indexError = data == null
+      ? 'Server bo‘sh javob qaytardi'
+      : data.toString();
+}
+      } catch (e) {
+  failed++;
+  indexError = e.toString();
+}
+    }
+    if (!mounted) return;
+    setState(() {
+      indexing = false;
+indexStatus = 'Tayyor: $succeeded PDF. Xato: $failed PDF.';
+
+if (indexError.isNotEmpty) {
+  indexStatus += '\nXatolik sababi: $indexError';
+}
+      
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDocuments();
+  }
+
+  Future<void> _loadDocuments() async {
+    try {
+      final response = await supabase
+          .from('Documents')
+          .select()
+.eq('field_id', AppSession.fieldId ?? '')
+          .order('id', ascending: false);
+
+      if (!mounted) return;
+
+      setState(() {
+      documents = List<Map<String, dynamic>>.from(response)
+  ..sort((a, b) {
+    final categoryA = _documentCategory(
+      a['File_name']?.toString() ?? '',
+    );
+    final categoryB = _documentCategory(
+      b['File_name']?.toString() ?? '',
+    );
+
+    final result = categoryA.compareTo(categoryB);
+    if (result != 0) return result;
+
+    return (a['File_name']?.toString() ?? '')
+        .compareTo(b['File_name']?.toString() ?? '');
+  });
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Hujjatlarni yuklashda xato: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickAndUploadDocument() async {
+  if (!AppSession.isAdmin) return;
+
+  final result = await FilePicker.platform.pickFiles(
+    withData: false,
+    allowMultiple: false,
+  );
+
+  if (result == null || result.files.isEmpty) return;
+
+  final file = result.files.first;
+  final filePath = file.path;
+
+  if (filePath == null || filePath.isEmpty) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Fayl yo‘lini o‘qib bo‘lmadi'),
+      ),
+    );
+    return;
+  }
+
+  setState(() {
+    uploading = true;
+  });
+
+  try {
+    
+final safeName = file.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final storagePath =
+        '${DateTime.now().millisecondsSinceEpoch}_$safeName';
+
+    await supabase.storage
+        .from('technical-documents')
+        .upload(
+          storagePath,
+          File(filePath),
+        );
+
+    final inserted = await supabase.from('Documents').insert({
+      'File_name': file.name,
+      'Storage_path': storagePath,
+      'field_id': AppSession.fieldId ?? '',
+    }).select('id').single();
+
+    // PDF tasnifi yordamchi xizmat. Xato bersa yuklangan fayl saqlanadi.
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+      try {
+        final response = await supabase.functions.invoke('ai_diagnose', body: {
+          'action': 'index_document',
+          'document_id': inserted['id'].toString(),
+          'field_id': AppSession.fieldId ?? '',
+        });
+        if (response.data is Map && response.data['indexed'] != true) {
+          indexStatus = 'Hujjat yuklandi, AI indeksi keyin bajariladi';
+        }
+      } catch (_) {
+        indexStatus = 'Hujjat yuklandi, AI indeksi keyin bajariladi';
+      }
+    }
+    await _loadDocuments();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Hujjat muvaffaqiyatli yuklandi'),
+      ),
+    );
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Hujjat yuklashda xato: $e'),
+      ),
+    );
+  } finally {
+    if (mounted) {
+      setState(() {
+        uploading = false;
+      });
+    }
+  }
+}
+  
+
+  Future<void> _deleteDocument(
+    Map<String, dynamic> document,
+  ) async {
+    if (!AppSession.isSuperAdmin) return;
+
+    final fileName =
+        document['File_name']?.toString() ?? 'Hujjat';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Hujjatni o‘chirish'),
+          content: Text(
+            '$fileName hujjati o‘chirilsinmi?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('YO‘Q'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('HA'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final storagePath =
+          document['Storage_path']?.toString();
+
+      if (storagePath != null &&
+          storagePath.isNotEmpty) {
+        await supabase.storage
+            .from('technical-documents')
+            .remove([storagePath]);
+      }
+
+      await supabase
+          .from('Documents')
+          .delete()
+          .eq('id', document['id']);
+
+      await _loadDocuments();
+
+      if (!mounted) return;
+
+ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Hujjat o‘chirildi'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('O‘chirishda xato: $e'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Texnik hujjatlar'),
+        actions: [
+          IconButton(
+            onPressed: _loadDocuments,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+ bottom: PreferredSize(
+  preferredSize: const Size.fromHeight(72),
+  child: Padding(
+    padding: const EdgeInsets.all(8),
+    child: TextField(
+textInputAction: TextInputAction.search,
+onSubmitted: (value) => _searchTag(value),
+      decoration: const InputDecoration(
+        hintText: 'Hujjat nomi yoki toifasini qidirish',
+        prefixIcon: Icon(Icons.search),
+        border: OutlineInputBorder(),
+      ),
+    onChanged: (value) {
+  ++_tagSearchRequestId;
+
+  setState(() {
+    _documentSearchQuery = value;
+    _tagSearchResults = [];
+    _tagSearchError = '';
+    _tagSearchLoading = false;
+  });
+},
+    ),
+  ),
+),
+      ),
+      floatingActionButton: AppSession.isAdmin
+          ? FloatingActionButton.extended(
+              onPressed:
+                  uploading ? null : _pickAndUploadDocument,
+              icon: const Icon(Icons.upload_file),
+              label: Text(
+                uploading
+                    ? 'YUKLANMOQDA...'
+                    : 'HUJJAT YUKLASH',
+              ),
+            )
+          : null,
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : documents.isNotEmpty && AppSession.isAdmin
+              ? Column(children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Column(children: [
+                      OutlinedButton.icon(
+                        onPressed: indexing ? null : _indexExistingDocuments,
+                        icon: const Icon(Icons.manage_search),
+                        label: Text(indexing ? 'HUJJATLAR INDEKSLANMOQDA...' :
+                            'MAVJUD PDFLARNI AI INDEKSLASH'),
+                      ),
+                      if (indexStatus.isNotEmpty) Text(indexStatus),
+if (_tagSearchLoading)
+  const LinearProgressIndicator(),
+
+if (_tagSearchError.isNotEmpty)
+  Text(
+    _tagSearchError,
+    style: TextStyle(
+      color: Theme.of(context).colorScheme.error,
+    ),
+  ),
+
+if (_tagSearchResults.isNotEmpty)
+  SizedBox(
+    height: 180,
+    child: ListView.builder(
+      itemCount: _tagSearchResults.length,
+      itemBuilder: (context, index) {
+        final item = _tagSearchResults[index];
+        final name = item['document']?.toString() ?? '';
+
+        return ListTile(
+          leading: const Icon(Icons.picture_as_pdf),
+          title: Text(name),
+          subtitle: Text(
+            item['tag'] == null
+                ? 'Fayl nomi bo‘yicha topildi'
+                : 'TAG: ${item['tag']}',
+          ),
+          onTap: name.toLowerCase().endsWith('.pdf')
+              ? () => openTechnicalPdf(
+                    context,
+                    fileName: name,
+                  )
+              : null,
+        );
+      },
+    ),
+  ),
+                    ]),
+                  ),
+                  Expanded(
+  child: _filteredDocuments.isEmpty
+      ? Center(
+          child: Text(
+            _documentSearchQuery.trim().isEmpty
+                ? 'Hozircha texnik hujjat yo‘q'
+                : 'Qidiruv bo‘yicha hujjat topilmadi',
+          ),
+        )
+      : ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _filteredDocuments.length,
+                    itemBuilder: (context, index) {
+                    final document = _filteredDocuments[index];
+final category = _documentCategory(
+  document['File_name']?.toString() ?? '',
+);
+
+final showHeader = index == 0 ||
+    _documentCategory(
+    _filteredDocuments[index - 1]['File_name']
+    ) != category;
+                      return Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    if (showHeader)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+        child: Text(
+          category,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    Card(child: ListTile(
+onTap: () {
+  final name = document['File_name']?.toString() ?? '';
+  if (name.toLowerCase().endsWith('.pdf')) {
+    openTechnicalPdf(context, fileName: name);
+  }
+},
+                        leading: const Icon(Icons.description),
+                        title: Text(document['File_name']?.toString() ?? 'Hujjat'),
+                        subtitle: Text(
+  _documentCategory(
+    document['File_name']?.toString() ?? '',
+  ),
+),
+                        trailing: AppSession.isSuperAdmin ? IconButton(
+                          onPressed: () => _deleteDocument(document),
+                          icon: const Icon(Icons.delete_outline),
+                        ) : null,
+                      )),
+  ],
+);
+                    },
+                  )),
+                ])
+          : _filteredDocuments.isEmpty
+              ?  Center(
+                  child: Text(
+                    _documentSearchQuery.trim().isEmpty
+    ? 'Hozircha texnik hujjat yo‘q'
+    : 'Qidiruv bo‘yicha hujjat topilmadi',
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _filteredDocuments.length,
+                  itemBuilder: (context, index) {
+                  final document = _filteredDocuments[index];
+final category = _documentCategory(
+  document['File_name']?.toString() ?? '',
+);
+
+final showHeader = index == 0 ||
+    _documentCategory(
+      _filteredDocuments[index - 1]['File_name']?.toString() ?? '',
+    ) != category;
+
+                  
+                      return Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+if (showHeader)
+  Padding(
+    padding: const EdgeInsets.fromLTRB(8, 16, 8, 4),
+    child: Text(
+      category,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+      ),
+    ),
+  ),
+        
+    Card(child: ListTile(
+onTap: () {
+  final name = document['File_name']?.toString() ?? '';
+  if (name.toLowerCase().endsWith('.pdf')) {
+    openTechnicalPdf(context, fileName: name);
+  }
+},
+                        leading: const Icon(
+                          Icons.description,
+                        ),
+                        title: Text(
+                          document['File_name']
+                                  ?.toString() ??
+                              'Hujjat',
+                        ),
+                        subtitle: Text(
+  _documentCategory(
+    document['File_name']?.toString() ?? '',
+  ),
+),
+                        trailing:
+                            AppSession.isSuperAdmin
+                                ? IconButton(
+                                    onPressed: () {
+                                      _deleteDocument(
+                                        document,
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                    ),
+                                  )
+                                : null,
+                      ),
+                    ),
+],
+);
+                  },
+                ),
+    );
+  }
+}
+
+class SignalAlarmPage extends StatefulWidget {
+  const SignalAlarmPage({super.key});
+
+  @override
+  State<SignalAlarmPage> createState() =>
+      _SignalAlarmPageState();
+}
+
+class _SignalAlarmPageState extends State<SignalAlarmPage> {
+  final signalController = TextEditingController();
+  final timeController = TextEditingController();
+
+  final List<Map<String, String>> signals = [];
+
+  void _addSignal() {
+    final signal = signalController.text.trim();
+    final time = timeController.text.trim();
+
+    if (signal.isEmpty || time.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Signal va vaqtni kiriting',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      signals.add({
+        'signal': signal,
+        'time': time,
+      });
+
+      signals.sort(
+        (a, b) => (a['time'] ?? '')
+            .compareTo(b['time'] ?? ''),
+      );
+
+      signalController.clear();
+      timeController.clear();
+    });
+  }
+
+  void _removeSignal(int index) {
+    setState(() {
+      signals.removeAt(index);
+    });
+  }
+
+  @override
+  void dispose() {
+    signalController.dispose();
+    timeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Signal va Alarm'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            controller: timeController,
+            decoration: const InputDecoration(
+              labelText: 'Signal vaqti',
+              hintText: 'Masalan: 14:25:03',
+              prefixIcon: Icon(Icons.schedule),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: signalController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Signal / Alarm / Trip',
+              hintText: 'Signal matnini kiriting',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _addSignal,
+            icon: const Icon(Icons.add),
+            label: const Text('SIGNAL QO‘SHISH'),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Signal ketma-ketligi',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (signals.isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Hozircha signal kiritilmagan',
+                ),
+              ),
+            )
+          else
+            ...List.generate(
+              signals.length,
+              (index) {
+                final item = signals[index];
+
+                return Card(
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      child: Text('${index + 1}'),
+                    ),
+                    title: Text(
+                      item['signal'] ?? '',
+                    ),
+                    subtitle: Text(
+                      'Vaqt: ${item['time'] ?? ''}',
+                    ),
+                    trailing: IconButton(
+                      onPressed: () {
+                        _removeSignal(index);
+                      },
+                      icon: const Icon(
+                        Icons.delete_outline,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          if (signals.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Card(
+
+child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'AI signal tarjimasi, birinchi kelgan '
+                  'signalni aniqlash va sabab tahlili '
+                  'API ulanishining oxirgi bosqichida '
+                  'qo‘shiladi.',
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+class ScadaTrendPage extends StatefulWidget {
+  const ScadaTrendPage({super.key});
+
+  @override
+  State<ScadaTrendPage> createState() =>
+      _ScadaTrendPageState();
+}
+
+class _ScadaTrendPageState extends State<ScadaTrendPage> {
+  Uint8List? selectedImage;
+  String? imageName;
+  bool analyzing = false;
+  String aiResult = '';
+
+  Future<void> _analyzeTrend() async {
+    final picture = selectedImage;
+    if (picture == null) return;
+    setState(() { analyzing = true; aiResult = 'Trend tahlil qilinmoqda...'; });
+    try {
+      final answer = await AiMuhandisService.ask(
+        image: picture,
+        mode: 'trend',
+        question: """SCADA/trend rasmini o‘zbek tilida tahlil qiling.
+Ko‘rinayotgan TAG, vaqt, bosim, temperatura, gaz sarfi, RPM va o‘zgarish
+nuqtalarini ko‘rsating. O‘qilmaydigan qiymatlarni to‘qimang.
+Avariya oldidan signal ketma-ketligi faqat vaqtlar aniq bo‘lsa ko‘rsatilsin.
+Texnik sababni taxmin va tasdiqlangan dalillarga ajratib yozing.
+Himoya/interlockni chetlab o‘tishni maslahat bermang.""",
+      );
+      if (!mounted) return;
+      setState(() => aiResult = answer);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => aiResult = 'AI tahlil xatosi: $e');
+    } finally {
+      if (mounted) setState(() => analyzing = false);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+
+    final image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+
+    if (image == null) return;
+
+    final bytes = await image.readAsBytes();
+
+    if (!mounted) return;
+
+    setState(() {
+      selectedImage = bytes;
+      imageName = image.name;
+      aiResult = '';
+    });
+  }
+
+  void _removeImage() {
+    setState(() {
+      selectedImage = null;
+      imageName = null;
+      aiResult = '';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('SCADA / Trend'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'SCADA yoki Trend rasmi',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          OutlinedButton.icon(
+            onPressed: _pickImage,
+            icon: const Icon(Icons.add_photo_alternate),
+            label: const Text('RASM TANLASH'),
+          ),
+
+          if (selectedImage != null) ...[
+            const SizedBox(height: 16),
+
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                selectedImage!,
+                height: 300,
+                fit: BoxFit.contain,
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    imageName ?? 'Rasm tanlandi',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  onPressed: _removeImage,
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            FilledButton.icon(
+              onPressed: analyzing ? null : _analyzeTrend,
+              icon: const Icon(Icons.analytics),
+              label: Text(analyzing ? 'TAHLIL QILINMOQDA...' : 'TRENDNI AI BILAN TAHLIL'),
+            ),
+            if (aiResult.isNotEmpty) Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(aiResult),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+class SignalChainPage extends StatefulWidget {
+  const SignalChainPage({super.key});
+
+  @override
+  State<SignalChainPage> createState() => _SignalChainPageState();
+}
+
+class _DocumentedSignalStep {
+  final String name;
+  final String tag;
+  final String details;
+  final String document;
+  final int page;
+  const _DocumentedSignalStep({
+    required this.name,
+    required this.tag,
+    required this.details,
+    required this.document,
+    required this.page,
+  });
+}
+
+class _SignalChainPageState extends State<SignalChainPage> {
+  final tagController = TextEditingController();
+  String result = '';
+  List<_DocumentedSignalStep> documentedSteps = [];
+  bool checking = false;
+
+  /// JSON formatidagi javobni qabul qiladi; hujjat nomi bazada yo‘q bo‘lsa
+  /// yoki sahifa ko‘rsatilmagan bo‘lsa sxemaga qo‘shmaydi.
+  List<_DocumentedSignalStep> _extractSteps(
+    String answer, List<String> knownDocuments,
+  ) {
+    final open = answer.indexOf('{');
+    final close = answer.lastIndexOf('}');
+    if (open < 0 || close <= open) return [];
+    try {
+      final parsed = jsonDecode(answer.substring(open, close + 1));
+      if (parsed is! Map || parsed['steps'] is! List) return [];
+      final allowed = {
+        for (final doc in knownDocuments) doc.trim().toLowerCase(): doc,
+      };
+      final steps = <_DocumentedSignalStep>[];
+      for (final item in parsed['steps'] as List) {
+        if (item is! Map) continue;
+        final name = (item['name'] ?? '').toString().trim();
+        final doc = (item['document'] ?? '').toString().trim();
+        final page = int.tryParse((item['page'] ?? '').toString());
+        if (name.isEmpty || page == null || page < 1) continue;
+        final realDoc = allowed[doc.toLowerCase()];
+        if (realDoc == null) continue;
+        steps.add(_DocumentedSignalStep(
+          name: name,
+          tag: (item['tag'] ?? '').toString().trim(),
+          details: (item['details'] ?? '').toString().trim(),
+          document: realDoc,
+          page: page,
+        ));
+      }
+      return steps;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _checkSignalChain() async {
+    final tag = tagController.text.trim();
+    final picture = SignalImageBridge.imageForCurrentField();
+    final existingAnalysis = SignalImageBridge.analysisForCurrentField().trim();
+    if (picture == null && tag.isEmpty && existingAnalysis.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Avval AI ga savolga rasm yuboring yoki TAG kiriting'),
+      ));
+      return;
+    }
+    setState(() {
+      checking = true;
+      documentedSteps = [];
+      result = 'Signal zanjiri hujjatlardan qidirilmoqda...';
+    });
+    try {
+      final docs = await AiMuhandisService.currentDocumentNames();
+      if (docs.isEmpty) {
+        throw StateError('Ushbu kon uchun PDF/hujjat topilmadi. Kon ID va hujjatlarni tekshiring.');
+      }
+      final ranked = AiMuhandisService.rankDocuments(
+        docs, '$tag ${SignalImageBridge.question} $existingAnalysis',
+      );
+      final response = await AiMuhandisService.ask(
+        image: picture,
+        mode: 'chain',
+        question: """SIGNAL ZANJIRI. Foydalanuvchi yuklagan rasmni bevosita tahlil qiling.
+Rasm oldin "AI ga savol" bo‘limida yuklangan; qayta yuklash talab qilinmaydi.
+Operator savoli: ${SignalImageBridge.question}
+Avvalgi AI tahlili (faqat yordamchi, dalil emas): $existingAnalysis
+Qo‘lda kiritilgan TAG: $tag
+Ushbu kon hujjatlari: ${ranked.join('; ')}
+
+Hujjatlardagi P&ID, elektr, KIPiA, I/O listdan datchik, kabel, Junction Box,
+terminal, RIO/I/O, PLC/DCS, SCADA va Alarm/Trip yo‘lini qidiring.
+FAQAT real hujjatdan sahifasi bilan tasdiqlanadigan qadamni kiritish mumkin.
+Uskuna va signal zanjiri to‘liq topilmasa to‘liq qilib ko‘rsatmang.
+Hujjatda yo‘q kabel/terminal/kanal/modul raqamini ASLO taxmin qilmang.
+Javob FAQAT JSON bo‘lsin, shakli:
+{"summary":"o‘zbekcha qisqa xulosa", "steps":[
+ {"name":"Datchik", "tag":"PT-101", "details":"faqat hujjatda bor ma’lumot", "document":"hujjatning ro‘yxatdagi aynan nomi", "page":12}
+]}
+"steps" tartibi manbadagi signal oqimi bo‘yicha. Aniq manba bo‘lmasa [] qaytaring.
+Himoya/interlock/tripni chetlab o‘tish bo‘yicha ko‘rsatma bermang.
+""",
+      );
+      final found = _extractSteps(response, docs);
+      String summary = response;
+      try {
+        final first = response.indexOf('{');
+        final last = response.lastIndexOf('}');
+        if (first >= 0 && last > first) {
+          final decoded = jsonDecode(response.substring(first, last + 1));
+          if (decoded is Map && decoded['summary'] != null) {
+            summary = decoded['summary'].toString();
+          }
+        }
+      } catch (_) {
+        // Eski Edge Function oddiy matn qaytarsa, matnni saqlab qolamiz.
+      }
+      if (!mounted) return;
+      setState(() {
+        result = summary;
+        documentedSteps = found;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => result = 'Signal zanjiri aniqlanmadi: $e');
+    } finally {
+      if (mounted) setState(() => checking = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    tagController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasOperatorImage = SignalImageBridge.imageForCurrentField() != null;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Signal zanjiri')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ListTile(
+            leading: Icon(hasOperatorImage ? Icons.image : Icons.image_not_supported),
+            title: Text(hasOperatorImage
+                ? 'AI ga savoldagi rasm tayyor'
+                : 'AI ga savoldan rasm hali olinmagan'),
+            subtitle: const Text('Rasmni qayta yuklash shart emas'),
+          ),
+          TextField(
+            controller: tagController,
+            decoration: const InputDecoration(
+              labelText: 'TAG (ixtiyoriy)',
+              hintText: 'Masalan: PT-101',
+              prefixIcon: Icon(Icons.tag),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: checking ? null : _checkSignalChain,
+            icon: const Icon(Icons.account_tree),
+            label: Text(checking ? 'QIDIRILMOQDA...' : 'SIGNAL ZANJIRINI KO‘RISH'),
+          ),
+          if (result.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Card(child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: SelectableText(result),
+            )),
+          ],
+          if (documentedSteps.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('AI ANIQLAGAN HUJJATLI SIGNAL ZANJIRI',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text('AI ko‘rsatgan sahifa havolalari texnik xodim tomonidan tekshirilishi kerak. Ushbu chizma xavfsizlik tizimi uchun tasdiqlangan loyiha emas.'),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                for (var i = 0; i < documentedSteps.length; i++) ...[
+                  if (i > 0) const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Icon(Icons.arrow_forward),
+                  ),
+                  Card(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 220),
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(documentedSteps[i].name,
+                              style: const TextStyle(fontWeight: FontWeight.bold)),
+                          if (documentedSteps[i].tag.isNotEmpty)
+                            Text('TAG: ${documentedSteps[i].tag}'),
+                          if (documentedSteps[i].details.isNotEmpty)
+                            Text(documentedSteps[i].details),
+                          const Divider(),
+                          TextButton.icon(
+  onPressed: () => openTechnicalPdf(
+    context,
+    fileName: documentedSteps[i].document,
+    page: documentedSteps[i].page,
+  ),
+  icon: const Icon(Icons.picture_as_pdf),
+  label: Text(
+    '${documentedSteps[i].document}\n'
+    'Sahifa: ${documentedSteps[i].page} — OCHISH',
+  ),
+),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          ] else if (result.isNotEmpty && !checking)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text('Sahifasi ko‘rsatilgan va shu kon hujjatlariga mos qadamlar topilmadi: taxminiy zanjir chizilmadi.'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class HistoryPage extends StatefulWidget {
+  const HistoryPage({super.key});
+
+  @override
+  State<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  final supabase = Supabase.instance.client;
+
+  List<Map<String, dynamic>> history = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      var query = supabase
+    .from('fault_history')
+    .select();
+
+if (!AppSession.isSuperAdmin &&
+    AppSession.fieldId != null &&
+    AppSession.fieldId!.isNotEmpty) {
+  query = query.eq('field_id', AppSession.fieldId!);
+}
+
+final response =
+    await query.order('created_at', ascending: false);
+
+      if (!mounted) return;
+
+      setState(() {
+        history = List<Map<String, dynamic>>.from(response);
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Nosozliklar tarixini yuklashda xato: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteHistory(
+    Map<String, dynamic> item,
+  ) async {
+    if (!AppSession.isSuperAdmin) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Yozuvni o‘chirish'),
+          content: const Text(
+            'Ushbu nosozlik yozuvi o‘chirilsinmi?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('YO‘Q'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              child: const Text('HA'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await supabase
+          .from('fault_history')
+          .delete()
+          .eq('id', item['id']);
+
+      await _loadHistory();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Yozuv o‘chirildi'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('O‘chirishda xato: $e'),
+        ),
+      );
+    }
+  }
+
+  String _statusText(dynamic status) {
+    switch (status?.toString()) {
+      case 'open':
+        return 'Ochiq';
+      case 'in_progress':
+        return 'Jarayonda';
+      case 'completed':
+        return 'Yakunlangan';
+      default:
+        return status?.toString() ?? '-';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Nosozliklar tarixi'),
+        actions: [
+          IconButton(
+            onPressed: _loadHistory,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: loading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : history.isEmpty
+              ? const Center(
+                  child: Text(
+                    'Hozircha nosozliklar tarixi yo‘q',
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadHistory,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: history.length,
+                    itemBuilder: (context, index) {
+                      final item = history[index];
+
+                      return Card(
+                        margin: const EdgeInsets.only(
+                          bottom: 12,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+
+child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item['equipment']
+                                              ?.toString() ??
+                                          'Uskuna',
+                                      style: const TextStyle(
+                                        fontSize: 17,
+                                        fontWeight:
+                                            FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  if (AppSession.isSuperAdmin)
+                                    IconButton(
+                                      onPressed: () {
+                                        _deleteHistory(item);
+                                      },
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              Text(
+                                'TAG: ${item['tag'] ?? '-'}',
+                              ),
+                              Text(
+                                'Signal/Alarm: '
+                                '${item['alarm'] ?? '-'}',
+                              ),
+                              const Divider(),
+                              Text(
+                                'Sabab: '
+                                '${item['cause'] ?? '-'}',
+                              ),
+                              Text(
+                                'Bajarilgan ish: '
+                                '${item['work_done'] ?? '-'}',
+                              ),
+                              Text(
+                                'Almashtirilgan qism: '
+                                '${item['part'] ?? '-'}',
+                              ),
+                              Text(
+                                'Natija: '
+                                '${item['result'] ?? '-'}',
+                              ),
+                              const Divider(),
+                              Text(
+                                'Muhandis: '
+                                '${item['engineer'] ?? '-'}',
+                              ),
+                              Text(
+                                'Bo‘lim: '
+                                '${item['department'] ?? '-'}',
+                              ),
+                              Text(
+                                'Holat: '
+                                '${_statusText(item['status'])}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+    );
+  }
+}
+
+class WorkResultPage extends StatefulWidget {
+  final String equipment;
+  final String tag;
+  final String alarm;
+
+  const WorkResultPage({
+    super.key,
+    this.equipment = '',
+    this.tag = '',
+    this.alarm = '',
+  });
+
+  @override
+  State<WorkResultPage> createState() =>
+      _WorkResultPageState();
+}
+
+class _WorkResultPageState extends State<WorkResultPage> {
+  final supabase = Supabase.instance.client;
+
+  final causeController = TextEditingController();
+  final workController = TextEditingController();
+  final partController = TextEditingController();
+  final resultController = TextEditingController();
+  final engineerController = TextEditingController();
+  final departmentController = TextEditingController();
+
+  String status = 'completed';
+  bool saving = false;
+
+  Future<void> _saveWorkResult() async {
+    if (!AppSession.isAdmin) return;
+
+    if (causeController.text.trim().isEmpty ||
+        workController.text.trim().isEmpty ||
+        resultController.text.trim().isEmpty ||
+        engineerController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sabab, bajarilgan ish, natija va muhandisni kiriting',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      saving = true;
+    });
+
+    try {
+      await supabase.from('fault_history').insert({
+      'field_id': AppSession.fieldId ?? '',
+        'equipment': widget.equipment,
+        'tag': widget.tag,
+        'alarm': widget.alarm,
+        'cause': causeController.text.trim(),
+        'work_done': workController.text.trim(),
+        'part': partController.text.trim(),
+        'result': resultController.text.trim(),
+        'engineer': engineerController.text.trim(),
+        'department': departmentController.text.trim(),
+        'status': status,
+      });
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ish natijasi tarixga saqlandi',
+          ),
+        ),
+      );
+
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saqlashda xato: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          saving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    causeController.dispose();
+    workController.dispose();
+    partController.dispose();
+    resultController.dispose();
+    engineerController.dispose();
+    departmentController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ish yakuni'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (widget.equipment.isNotEmpty)
+            Text(
+              'Uskuna: ${widget.equipment}',
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          if (widget.tag.isNotEmpty)
+            Text('TAG: ${widget.tag}'),
+          if (widget.alarm.isNotEmpty)
+            Text(
+              'Signal/Alarm: ${widget.alarm}',
+            ),
+
+          if (widget.equipment.isNotEmpty ||
+              widget.tag.isNotEmpty ||
+              widget.alarm.isNotEmpty)
+            const SizedBox(height: 16),
+
+          TextField(
+            controller: causeController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Aniqlangan sabab',
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          TextField(
+            controller: workController,
+            maxLines: 4,
+            decoration: const InputDecoration(
+              labelText: 'Bajarilgan ishlar',
+            ),
+          ),
+          const SizedBox(height: 12),
+
+TextField(
+            controller: partController,
+            decoration: const InputDecoration(
+              labelText: 'Almashtirilgan qism / detal',
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          TextField(
+            controller: resultController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Ish natijasi',
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          TextField(
+            controller: engineerController,
+            decoration: const InputDecoration(
+              labelText: 'Muhandis / bajaruvchi',
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          TextField(
+            controller: departmentController,
+            decoration: const InputDecoration(
+              labelText: 'Bo‘lim',
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          DropdownButtonFormField<String>(
+            initialValue: status,
+            decoration: const InputDecoration(
+              labelText: 'Ish holati',
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: 'open',
+                child: Text('Ochiq'),
+              ),
+              DropdownMenuItem(
+                value: 'in_progress',
+                child: Text('Jarayonda'),
+              ),
+              DropdownMenuItem(
+                value: 'completed',
+                child: Text('Yakunlangan'),
+              ),
+            ],
+            onChanged: (value) {
+              if (value == null) return;
+
+              setState(() {
+                status = value;
+              });
+            },
+          ),
+
+          const SizedBox(height: 20),
+FilledButton.icon(
+  onPressed: saving ? null : _saveWorkResult,
+  icon: saving
+      ? const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+          ),
+        )
+      : const Icon(Icons.save),
+  label: Text(
+    saving ? 'SAQLANMOQDA...' : 'ISH YAKUNINI SAQLASH',
+  ),
+),
+  ],          
+    ),
+
+     
+    );
+  }
+}
+        
+
+class ManagerPage extends StatefulWidget {
+  const ManagerPage({super.key});
+
+  @override
+  State<ManagerPage> createState() => _ManagerPageState();
+}
+
+class _ManagerPageState extends State<ManagerPage> {
+  final supabase = Supabase.instance.client;
+
+  List<Map<String, dynamic>> works = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWorks();
+  }
+
+  Future<void> _loadWorks() async {
+    try {
+      var query = supabase
+    .from('fault_history')
+    .select();
+
+if (!AppSession.isSuperAdmin &&
+    AppSession.fieldId != null &&
+    AppSession.fieldId!.isNotEmpty) {
+  query = query.eq('field_id', AppSession.fieldId!);
+}
+
+final response =
+    await query.order('created_at', ascending: false);
+
+      if (!mounted) return;
+
+      setState(() {
+        works = List<Map<String, dynamic>>.from(response);
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        loading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Rahbar panelini yuklashda xato: $e',
+          ),
+        ),
+      );
+    }
+  }
+
+  int _countStatus(String status) {
+    return works.where((item) {
+      return item['status']?.toString() == status;
+    }).length;
+  }
+
+  Widget _statusCard(
+    String title,
+    int count,
+    IconData icon,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              child: Icon(icon),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            Text(
+              '$count',
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+final currentField = AppSession.fieldName ?? 'Barcha konlar';
+    final open = _countStatus('open');
+    final inProgress = _countStatus('in_progress');
+    final completed = _countStatus('completed');
+
+    return Scaffold(
+      appBar: AppBar(
+    title: Text('Rahbar paneli — $currentField'),
+        actions: [
+          IconButton(
+            onPressed: _loadWorks,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: loading
+          ? const Center(
+              child: CircularProgressIndicator(),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadWorks,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _statusCard(
+                    'Ochiq nosozliklar',
+                    open,
+                    Icons.warning_amber,
+                  ),
+                  _statusCard(
+                    'Jarayondagi ishlar',
+                    inProgress,
+                    Icons.build,
+                  ),
+                  _statusCard(
+                    'Yakunlangan ishlar',
+                    completed,
+                    Icons.check_circle_outline,
+                  ),
+                  _statusCard(
+                    'Jami yozuvlar',
+                    works.length,
+                    Icons.list_alt,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  const Text(
+                    'So‘nggi ishlar',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  if (works.isEmpty)
+                    const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+
+'Hozircha ishlar mavjud emas',
+                        ),
+                      ),
+                    )
+                  else
+                    ...works.take(10).map((item) {
+                      return Card(
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.engineering,
+                          ),
+                          title: Text(
+                            item['equipment']
+                                    ?.toString() ??
+                                'Uskuna',
+                          ),
+                          subtitle: Text(
+                            'Muhandis: '
+                            '${item['engineer'] ?? '-'}\n'
+                            'Natija: '
+                            '${item['result'] ?? '-'}',
+                          ),
+                          isThreeLine: true,
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+    );
+  }
+}
+class UserManagementPage extends StatelessWidget {
+  const UserManagementPage({super.key});
+
+  Widget _roleCard({
+    required IconData icon,
+    required String title,
+    required List<String> permissions,
+  }) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  child: Icon(icon),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...permissions.map(
+              (permission) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.check,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(permission),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!AppSession.isSuperAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Foydalanuvchilar'),
+        ),
+        body: const Center(
+          child: Text(
+            'Bu bo‘lim faqat Super Admin uchun',
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Foydalanuvchilar va rollar'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _roleCard(
+            icon: Icons.admin_panel_settings,
+            title: 'Super Admin',
+            permissions: const [
+              'Barcha bo‘limlarni ko‘rish',
+              'Ma’lumot kiritish va boshqarish',
+              'Texnik hujjatlarni boshqarish',
+              'Nosozliklar tarixini boshqarish',
+              'Monitoring ma’lumotlarini o‘chirish',
+              'Rahbar panelini ko‘rish',
+            ],
+          ),
+          _roleCard(
+            icon: Icons.engineering,
+            title: 'Admin',
+            permissions: const [
+              'Texnologik parametrlarni kiritish',
+              'Uskuna va hujjatlar bilan ishlash',
+              'Nosozliklar tarixini ko‘rish',
+              'AI bo‘limlaridan foydalanish',
+              'Rahbar panelini ko‘rish',
+            ],
+          ),
+          _roleCard(
+            icon: Icons.visibility,
+            title: 'Operator / Kuzatuvchi',
+            permissions: const [
+              'Sutkalik monitoringni ko‘rish',
+              'Rasm bilan AI ga savol va Signal zanjiridan foydalanish',
+              'Ko‘rsatkichlarni kuzatish',
+              'Ma’lumotlarni o‘zgartira olmaydi',
+              'Texnik hujjatlar va nosozliklar '
+                  'tarixini ko‘ra olmaydi',
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+class FieldHomePage extends StatelessWidget {
+  const FieldHomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(AppSession.fieldName ?? 'Kon'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.monitor_heart),
+              title: const Text('Sutkalik monitoring'),
+              subtitle: const Text(
+                'Har soatlik ko‘rsatkichlar va kunlik arxiv',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const TechnologyPage(),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

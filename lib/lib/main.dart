@@ -408,6 +408,7 @@ if (code == 'AD_1969') {
         .eq('field_id', fieldId)
         .limit(1);
 
+    
     if (!mounted) return;
 
     if (fields.isEmpty) {

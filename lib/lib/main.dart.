@@ -1747,7 +1747,41 @@ final supabase = Supabase.instance.client;
   final outletTempController = TextEditingController();
   final gasFlowController = TextEditingController();
   final rpmController = TextEditingController();
+List<Map<String, dynamic>> rpmDefinitions = [];
+final Map<String, TextEditingController> extraRpmControllers = {};
+String? rpmConfigError;
+Future<void> _loadRpmDefinitions() async {
+  final fieldId = AppSession.fieldId?.trim() ?? '';
+  if (fieldId.isEmpty) return;
 
+  try {
+    final rows = await supabase
+        .from('rpm_field_definitions')
+        .select('id, name, is_active')
+        .eq('field_id', fieldId)
+        .order('id');
+
+    if (!mounted || AppSession.fieldId != fieldId) return;
+
+    setState(() {
+      rpmDefinitions = List<Map<String, dynamic>>.from(rows);
+      rpmConfigError = null;
+
+      for (final field in rpmDefinitions) {
+        final id = field['id'].toString();
+        extraRpmControllers.putIfAbsent(
+          id,
+          () => TextEditingController(),
+        );
+      }
+    });
+  } catch (e) {
+    if (!mounted) return;
+    setState(() {
+      rpmConfigError = 'RPM yuklashda xato: $e';
+    });
+  }
+}
   List<Map<String, dynamic>> hourlyData = [];
   bool loading = true;
   bool saving = false;
@@ -1763,6 +1797,7 @@ void initState() {
   super.initState();
   WidgetsBinding.instance.addObserver(this);
   _bootstrapMonitoring();
+_loadRpmDefinitions();
 _monitoringRefreshTimer = Timer.periodic(
   const Duration(minutes: 2),
   (_) {
@@ -1838,6 +1873,70 @@ Future<void> _restoreMonitoringCache() async {
     });
   } catch (_) {
     // Kesh buzilgan bo‘lsa, onlayn yuklash davom etadi.
+  }
+}
+Future<void> _addRpmDefinition() async {
+  if (!AppSession.isSuperAdmin) return;
+
+  final fieldId = AppSession.fieldId?.trim() ?? '';
+  if (fieldId.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Avval konni tanlang')),
+    );
+    return;
+  }
+
+  final controller = TextEditingController();
+
+  final name = await showDialog<String>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Yangi RPM qo‘shish'),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'RPM nomi',
+          hintText: 'Masalan: RPM-100',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('BEKOR'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final value = controller.text.trim();
+            if (value.isEmpty) return;
+            Navigator.pop(dialogContext, value);
+          },
+          child: const Text('QO‘SHISH'),
+        ),
+      ],
+    ),
+  );
+
+  if (!mounted || name == null) return;
+
+  try {
+    await supabase.from('rpm_field_definitions').insert({
+      'field_id': fieldId,
+      'name': name,
+      'is_active': true,
+    });
+
+    await _loadRpmDefinitions();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$name qo‘shildi')),
+    );
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('RPM qo‘shilmadi: $e')),
+    );
   }
 }
   String _dateText(DateTime date) {
@@ -2142,7 +2241,31 @@ Future<void> _saveHourlyData() async {
       );
       return;
     }
+final extraRpmValues = <String, double>{};
 
+for (final field in rpmDefinitions) {
+  if (field['is_active'] != true) continue;
+
+  final id = field['id'].toString();
+  final input = extraRpmControllers[id]?.text.trim() ?? '';
+
+  if (input.isEmpty) continue;
+
+  final value = double.tryParse(
+    input.replaceAll(',', '.'),
+  );
+
+  if (value == null  !value.isFinite  value < 0) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${field['name']} uchun to‘g‘ri RPM kiriting'),
+      ),
+    );
+    return;
+  }
+
+  extraRpmValues[id] = value;
+}
     setState(() {
       saving = true;
     });
@@ -2163,6 +2286,7 @@ Future<void> _saveHourlyData() async {
   'outlet_temp': outletTemp,
   'gas_flow': gasFlow,
   'rpm': rpm,
+'extra_rpm_values': extraRpmValues,
 });
     
 
@@ -2606,7 +2730,20 @@ if (sortedFolderDates.isNotEmpty) ...[
                       rpmController,
                       'RPM / aylanish tezligi',
                     ),
-
+if (AppSession.isSuperAdmin)
+  OutlinedButton.icon(
+    onPressed: _addRpmDefinition,
+    icon: const Icon(Icons.add),
+    label: const Text('YANGI RPM QO‘SHISH'),
+  ),
+const SizedBox(height: 12),
+for (final field in rpmDefinitions)
+  if (field['is_active'] == true &&
+      extraRpmControllers.containsKey(field['id'].toString()))
+    _numberField(
+      extraRpmControllers[field['id'].toString()]!,
+      field['name']?.toString() ?? 'Qo‘shimcha RPM',
+    ),
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
